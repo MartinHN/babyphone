@@ -49,6 +49,11 @@
     <label for="wakeToggle">Keep screen awake while listening</label>
   </div>
 
+  <div class="row">
+    <input type="checkbox" id="alertToggle" checked />
+    <label for="alertToggle">Alert sound if connection is lost</label>
+  </div>
+
   <audio id="audio" autoplay playsinline></audio>
 
   <div id="meterWrap">
@@ -89,6 +94,7 @@ const meterCtx = meterCanvas.getContext("2d");
 const meterDbLabel = document.getElementById("meterDb");
 const meterPeakLabel = document.getElementById("meterPeakLabel");
 const serverAddrInput = document.getElementById("serverAddr");
+const alertToggle = document.getElementById("alertToggle");
 
 let ws = null;
 let pc = null;
@@ -155,10 +161,47 @@ function setMediaPlaybackState(state) {
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = state;
 }
 
+// ---------- Connection-lost alert: audible tone (foreground) + vibrating, ----------
+// non-silent notification (works even if the app is backgrounded/screen off) ----------
+let hasAlertedThisDrop = false;
+
+function playAlertTone() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    [880, 660].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = now + i * 0.22;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.35, start + 0.02);
+      gain.gain.linearRampToValueAtTime(0, start + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch (err) {
+    console.warn("Alert tone failed:", err.message);
+  }
+}
+
+function triggerConnectionLostAlert() {
+  if (hasAlertedThisDrop || !alertToggle.checked) return; // only once per drop, not on every retry
+  hasAlertedThisDrop = true;
+  playAlertTone();
+  showStatusNotification("reconnecting", { audible: true });
+}
+
 audioEl.addEventListener("playing", () => {
   setStatus("🔊 Live — receiving mic audio", "live");
   setMediaPlaybackState("playing");
   showStatusNotification("live");
+  hasAlertedThisDrop = false;
 });
 audioEl.addEventListener("pause", () => {
   setMediaPlaybackState("paused");
@@ -309,7 +352,7 @@ async function ensureNotificationPermission() {
   return result === "granted";
 }
 
-async function showStatusNotification(state) {
+async function showStatusNotification(state, opts = {}) {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   const reg = await navigator.serviceWorker.ready;
@@ -317,7 +360,7 @@ async function showStatusNotification(state) {
   const texts = {
     connecting: { title: "Mic Stream — connecting...", body: "Looking for your laptop on the LAN" },
     live: { title: "🔊 Mic Stream — live", body: "Receiving mic audio from your laptop" },
-    reconnecting: { title: "Mic Stream — reconnecting...", body: "Connection dropped, retrying" },
+    reconnecting: { title: "⚠️ Mic Stream — connection lost", body: "Trying to reconnect to your laptop..." },
   };
   const t = texts[state];
   if (!t) return;
@@ -325,8 +368,9 @@ async function showStatusNotification(state) {
   await reg.showNotification(t.title, {
     body: t.body,
     tag: "mic-stream-status",
-    renotify: false,
-    silent: true,
+    renotify: !!opts.audible,
+    silent: !opts.audible,
+    vibrate: opts.audible ? [200, 100, 200, 100, 200] : undefined,
     requireInteraction: true,
     icon: "icons/icon-192.png",
     badge: "icons/icon-192.png",
@@ -387,7 +431,7 @@ function scheduleReconnect(immediate) {
   setStatus(`Reconnecting in ${Math.round(delay / 1000)}s...`, "reconnecting");
   setMediaPlaybackState("none");
   teardownMeter();
-  showStatusNotification("reconnecting");
+  triggerConnectionLostAlert(); // no-ops after the first call per drop
   reconnectTimer = setTimeout(() => {
     if (shouldStayConnected) openSocket();
   }, delay);

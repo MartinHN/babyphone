@@ -89,3 +89,12 @@ The listener page shows a big segmented level meter (green → yellow → red) b
 ## Notification bar status
 
 Chrome's automatic "Now Playing" media notification is unreliable for live WebRTC audio (it depends on Chrome detecting the `<audio>` element as "audible," which doesn't always trigger consistently, especially for installed PWAs). To work around this, the listener explicitly requests notification permission on connect and posts its own persistent notification ("Mic Stream — live") with a **Stop** action, via the service worker. This is what shows up in your notification shade — make sure to allow the permission prompt when you tap Connect.
+
+## Connection-lost alert
+
+If the connection drops unexpectedly while listening (toggle above, on by default), you get two layers of alert, fired once per drop (not repeated on every retry):
+
+- An **audible two-tone beep** played directly in the page — works whenever the app is foregrounded.
+- A **vibrating, non-silent notification** ("⚠️ Mic Stream — connection lost") — this is the one that reaches you when the app is backgrounded or the screen is off, since page JS/audio can't run reliably then.
+
+It clears itself automatically once the stream reconnects and audio resumes.
