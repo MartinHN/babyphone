@@ -164,6 +164,7 @@ function setMediaPlaybackState(state) {
 // ---------- Connection-lost alert: audible tone (foreground) + vibrating, ----------
 // non-silent notification (works even if the app is backgrounded/screen off) ----------
 let hasAlertedThisDrop = false;
+let alertLoopInterval = null;
 
 function playAlertTone() {
   try {
@@ -191,17 +192,24 @@ function playAlertTone() {
 }
 
 function triggerConnectionLostAlert() {
-  if (hasAlertedThisDrop || !alertToggle.checked) return; // only once per drop, not on every retry
+  if (hasAlertedThisDrop || !alertToggle.checked) return; // only start once per drop, not on every retry
   hasAlertedThisDrop = true;
   playAlertTone();
+  alertLoopInterval = setInterval(playAlertTone, 3000);
   showStatusNotification("reconnecting", { audible: true });
+}
+
+function stopConnectionLostAlert() {
+  if (alertLoopInterval) clearInterval(alertLoopInterval);
+  alertLoopInterval = null;
+  hasAlertedThisDrop = false;
 }
 
 audioEl.addEventListener("playing", () => {
   setStatus("🔊 Live — receiving mic audio", "live");
   setMediaPlaybackState("playing");
   showStatusNotification("live");
-  hasAlertedThisDrop = false;
+  stopConnectionLostAlert();
 });
 audioEl.addEventListener("pause", () => {
   setMediaPlaybackState("paused");
@@ -418,6 +426,7 @@ function disconnect() {
   releaseWakeLock();
   teardownMeter();
   clearStatusNotification();
+  stopConnectionLostAlert();
   setStatus("Disconnected", "");
   setMediaPlaybackState("none");
   connectBtn.disabled = false;
