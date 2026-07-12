@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mic Stream — Listener</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#16a34a" />
+
+<!-- iOS home-screen / standalone support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MicStream" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; text-align: center; color: #1a1a1a; padding: 0 16px; }
+  h1 { font-size: 1.3rem; }
+  #status { margin: 24px 0; padding: 14px; border-radius: 8px; background: #f0f0f0; font-size: 0.95rem; }
+  #status.live { background: #d7f5dd; color: #14532d; }
+  #status.error { background: #fde2e2; color: #7f1d1d; }
+  #status.reconnecting { background: #fef3c7; color: #78350f; }
+  button { font-size: 1rem; padding: 12px 24px; border-radius: 8px; border: 1px solid #333; background: white; cursor: pointer; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #999; margin-right: 6px; }
+  .dot.live { background: #16a34a; }
+  .dot.reconnecting { background: #d97706; }
+  .row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; font-size: 0.9rem; color: #444; }
+  #note { margin-top: 28px; font-size: 0.8rem; color: #777; line-height: 1.4; text-align: left; }
+  #installBtn { display: none; margin-top: 14px; }
+  #meterWrap { margin-top: 28px; }
+  #meterLabel { font-size: 0.8rem; color: #666; margin-bottom: 6px; display: flex; justify-content: space-between; }
+  #meterCanvas { width: 100%; height: 140px; border-radius: 10px; background: #111; display: block; }
+</style>
+</head>
+<body>
+  <h1>📱 Mic Stream — Phone (Listener)</h1>
+
+  <div class="row" style="margin-top:0;">
+    <label for="serverAddr" style="white-space:nowrap;">Laptop address:</label>
+    <input type="text" id="serverAddr" placeholder="192.168.1.42:3000" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+  </div>
+
+  <div id="status"><span class="dot"></span><span id="statusText">Not connected</span></div>
+  <button id="connectBtn">Connect &amp; Listen</button>
+  <button id="installBtn">Install App</button>
+
+  <div class="row">
+    <input type="checkbox" id="wakeToggle" checked />
+    <label for="wakeToggle">Keep screen awake while listening</label>
+  </div>
+
+  <audio id="audio" autoplay playsinline></audio>
+
+  <div id="meterWrap">
+    <div id="meterLabel"><span id="meterDb">-∞ dB</span><span id="meterPeakLabel">peak: -∞ dB</span></div>
+    <canvas id="meterCanvas"></canvas>
+  </div>
+
+  <p id="note">
+    <strong>Laptop address</strong> is the host:port your signaling server prints
+    on startup (e.g. <code>192.168.1.42:3000</code>). If you're opening this
+    page directly from that server it's filled in automatically; if you're
+    using a version hosted elsewhere (like GitHub Pages), enter it manually —
+    it's remembered for next time. The very first time, open
+    <code>https://&lt;that-address&gt;</code> directly in this browser once and
+    accept the certificate warning, or the connection below will fail silently.
+    <br/><br/>
+    For best background reliability, install this as an app (button above, or
+    "Add to Home Screen"/"Share → Add to Home Screen"). When you tap
+    "Connect & Listen" you'll be asked for <strong>notification permission</strong>
+    — allow it, since that's what puts a persistent "Mic Stream" notification
+    with a Stop button in your notification shade while connected. Android
+    Chrome generally keeps audio playing when you switch apps or lock the
+    screen. iOS Safari is much more restrictive about background web audio —
+    keeping the screen awake (toggle above) is the most reliable way to avoid
+    interruptions there.
+  </p>
+
+<script>
+const connectBtn = document.getElementById("connectBtn");
+const installBtn = document.getElementById("installBtn");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("statusText");
+const dot = statusEl.querySelector(".dot");
+const audioEl = document.getElementById("audio");
+const wakeToggle = document.getElementById("wakeToggle");
+const meterCanvas = document.getElementById("meterCanvas");
+const meterCtx = meterCanvas.getContext("2d");
+const meterDbLabel = document.getElementById("meterDb");
+const meterPeakLabel = document.getElementById("meterPeakLabel");
+const serverAddrInput = document.getElementById("serverAddr");
+
+let ws = null;
+let pc = null;
+let wakeLock = null;
+let shouldStayConnected = false;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+
+// RMS meter state
+let meterAudioCtx = null;
+let meterSource = null;
+let meterAnalyser = null;
+let meterDataArray = null;
+let meterRAF = null;
+let meterPeakDb = -Infinity;
+let meterPeakHoldUntil = 0;
+
+function setStatus(text, cls) {
+  statusText.textContent = text;
+  statusEl.className = cls || "";
+  dot.className = "dot" + (cls ? " " + cls : "");
+}
+
+// ---------- LAN server address: needed because this page may be hosted ----------
+// somewhere other than the signaling server itself (e.g. GitHub Pages) ----------
+const ADDR_KEY = "micStreamServerAddress";
+(function initServerAddr() {
+  const saved = localStorage.getItem(ADDR_KEY);
+  if (saved) {
+    serverAddrInput.value = saved;
+  } else if (location.hostname !== "localhost" && !location.hostname.endsWith("github.io")) {
+    // Likely opened directly from the signaling server itself (LAN IP) — default to same-origin.
+    serverAddrInput.value = location.host;
+  }
+})();
+serverAddrInput.addEventListener("change", () => {
+  localStorage.setItem(ADDR_KEY, serverAddrInput.value.trim());
+});
+
+function getServerAddress() {
+  const addr = serverAddrInput.value.trim();
+  if (addr) localStorage.setItem(ADDR_KEY, addr);
+  return addr;
+}
+
+// ---------- Media Session: lock-screen controls + signals this is "media" ----------
+function setupMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: "Live Mic Stream",
+    artist: "Laptop (LAN)",
+    album: "Mic Stream",
+    artwork: [
+      { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  });
+  navigator.mediaSession.setActionHandler("play", () => connect());
+  navigator.mediaSession.setActionHandler("pause", () => disconnect());
+  navigator.mediaSession.setActionHandler("stop", () => disconnect());
+}
+
+function setMediaPlaybackState(state) {
+  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = state;
+}
+
+audioEl.addEventListener("playing", () => {
+  setStatus("🔊 Live — receiving mic audio", "live");
+  setMediaPlaybackState("playing");
+  showStatusNotification("live");
+});
+audioEl.addEventListener("pause", () => {
+  setMediaPlaybackState("paused");
+});
+
+// ---------- Wake Lock: prevents screen sleep while actively listening ----------
+async function requestWakeLock() {
+  if (!wakeToggle.checked || !("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch (err) {
+    console.warn("Wake lock failed:", err.message);
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch {}
+    wakeLock = null;
+  }
+}
+
+// Wake locks are auto-released when the tab is hidden; re-acquire on return
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && shouldStayConnected) {
+    requestWakeLock();
+    // If the connection died while backgrounded, kick off a reconnect
+    if (!pc || pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+      scheduleReconnect(true);
+    }
+  }
+});
+
+// ---------- RMS meter: taps the incoming stream in parallel with playback ----------
+function resizeMeterCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = meterCanvas.getBoundingClientRect();
+  meterCanvas.width = rect.width * dpr;
+  meterCanvas.height = rect.height * dpr;
+  meterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resizeMeterCanvas);
+
+function setupMeter(stream) {
+  teardownMeter();
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  meterAudioCtx = new AudioCtx();
+  meterSource = meterAudioCtx.createMediaStreamSource(stream);
+  meterAnalyser = meterAudioCtx.createAnalyser();
+  meterAnalyser.fftSize = 1024;
+  meterAnalyser.smoothingTimeConstant = 0.4;
+  meterDataArray = new Uint8Array(meterAnalyser.fftSize);
+  // Only connect to the analyser — NOT to destination — so this doesn't
+  // create a second, out-of-sync audio output. Playback stays on <audio>.
+  meterSource.connect(meterAnalyser);
+  resizeMeterCanvas();
+  meterPeakDb = -Infinity;
+  drawMeter();
+}
+
+function teardownMeter() {
+  if (meterRAF) cancelAnimationFrame(meterRAF);
+  meterRAF = null;
+  if (meterSource) { try { meterSource.disconnect(); } catch {} meterSource = null; }
+  if (meterAudioCtx) { meterAudioCtx.close().catch(() => {}); meterAudioCtx = null; }
+  meterAnalyser = null;
+  clearMeterCanvas();
+  meterDbLabel.textContent = "-∞ dB";
+  meterPeakLabel.textContent = "peak: -∞ dB";
+}
+
+function clearMeterCanvas() {
+  const rect = meterCanvas.getBoundingClientRect();
+  meterCtx.clearRect(0, 0, rect.width, rect.height);
+  meterCtx.fillStyle = "#111";
+  meterCtx.fillRect(0, 0, rect.width, rect.height);
+}
+
+function drawMeter() {
+  meterRAF = requestAnimationFrame(drawMeter);
+  if (!meterAnalyser) return;
+
+  meterAnalyser.getByteTimeDomainData(meterDataArray);
+  let sumSquares = 0;
+  for (let i = 0; i < meterDataArray.length; i++) {
+    const norm = (meterDataArray[i] - 128) / 128;
+    sumSquares += norm * norm;
+  }
+  const rms = Math.sqrt(sumSquares / meterDataArray.length);
+  const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+  const dbClamped = Math.max(db, -60); // floor for display purposes
+  const level = (dbClamped + 60) / 60; // 0..1
+
+  const now = performance.now();
+  if (db > meterPeakDb || now > meterPeakHoldUntil) {
+    if (db > meterPeakDb) {
+      meterPeakDb = db;
+      meterPeakHoldUntil = now + 1500;
+    }
+  }
+  // slow peak decay after hold expires
+  if (now > meterPeakHoldUntil) meterPeakDb -= 0.5;
+
+  meterDbLabel.textContent = db === -Infinity ? "-∞ dB" : `${db.toFixed(1)} dB`;
+  meterPeakLabel.textContent = `peak: ${meterPeakDb === -Infinity ? "-∞" : meterPeakDb.toFixed(1)} dB`;
+
+  const rect = meterCanvas.getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  meterCtx.clearRect(0, 0, w, h);
+  meterCtx.fillStyle = "#111";
+  meterCtx.fillRect(0, 0, w, h);
+
+  // Segmented bar, filled left-to-right, green -> yellow -> red
+  const segments = 28;
+  const gap = 3;
+  const segW = (w - gap * (segments - 1)) / segments;
+  const litSegments = Math.round(level * segments);
+
+  for (let i = 0; i < segments; i++) {
+    const frac = i / segments;
+    let color;
+    if (frac < 0.6) color = "#16a34a";
+    else if (frac < 0.85) color = "#eab308";
+    else color = "#dc2626";
+
+    meterCtx.fillStyle = i < litSegments ? color : "#2a2a2a";
+    const x = i * (segW + gap);
+    meterCtx.fillRect(x, 0, segW, h);
+  }
+
+  // Peak marker line
+  if (meterPeakDb > -60) {
+    const peakLevel = Math.max(0, Math.min(1, (meterPeakDb + 60) / 60));
+    const peakX = peakLevel * w;
+    meterCtx.fillStyle = "#ffffff";
+    meterCtx.fillRect(Math.min(peakX, w - 2), 0, 2, h);
+  }
+}
+
+// ---------- Persistent notification (more reliable than Chrome's automatic ----------
+// media notification, which doesn't always appear for live WebRTC audio) ----------
+async function ensureNotificationPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  const result = await Notification.requestPermission();
+  return result === "granted";
+}
+
+async function showStatusNotification(state) {
+  if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const reg = await navigator.serviceWorker.ready;
+
+  const texts = {
+    connecting: { title: "Mic Stream — connecting...", body: "Looking for your laptop on the LAN" },
+    live: { title: "🔊 Mic Stream — live", body: "Receiving mic audio from your laptop" },
+    reconnecting: { title: "Mic Stream — reconnecting...", body: "Connection dropped, retrying" },
+  };
+  const t = texts[state];
+  if (!t) return;
+
+  await reg.showNotification(t.title, {
+    body: t.body,
+    tag: "mic-stream-status",
+    renotify: false,
+    silent: true,
+    requireInteraction: true,
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+    actions: [{ action: "stop", title: "Stop" }],
+  });
+}
+
+async function clearStatusNotification() {
+  if (!("serviceWorker" in navigator)) return;
+  const reg = await navigator.serviceWorker.ready;
+  const notifs = await reg.getNotifications({ tag: "mic-stream-status" });
+  notifs.forEach((n) => n.close());
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "notification-stop") disconnect();
+  });
+}
+
+// ---------- Connection lifecycle ----------
+function connect() {
+  const addr = getServerAddress();
+  if (!addr) {
+    setStatus("Enter the laptop's address above first", "error");
+    serverAddrInput.focus();
+    return;
+  }
+  shouldStayConnected = true;
+  reconnectAttempt = 0;
+  connectBtn.disabled = true;
+  setStatus("Connecting...", "");
+  requestWakeLock();
+  ensureNotificationPermission().then((granted) => {
+    if (granted) showStatusNotification("connecting");
+  });
+  openSocket();
+}
+
+function disconnect() {
+  shouldStayConnected = false;
+  clearTimeout(reconnectTimer);
+  if (pc) { pc.close(); pc = null; }
+  if (ws) { ws.close(); ws = null; }
+  releaseWakeLock();
+  teardownMeter();
+  clearStatusNotification();
+  setStatus("Disconnected", "");
+  setMediaPlaybackState("none");
+  connectBtn.disabled = false;
+}
+
+function scheduleReconnect(immediate) {
+  if (!shouldStayConnected) return;
+  clearTimeout(reconnectTimer);
+  const delay = immediate ? 300 : Math.min(1000 * 2 ** reconnectAttempt, 10000);
+  reconnectAttempt++;
+  setStatus(`Reconnecting in ${Math.round(delay / 1000)}s...`, "reconnecting");
+  setMediaPlaybackState("none");
+  teardownMeter();
+  showStatusNotification("reconnecting");
+  reconnectTimer = setTimeout(() => {
+    if (shouldStayConnected) openSocket();
+  }, delay);
+}
+
+function openSocket() {
+  const addr = getServerAddress();
+  if (!addr) {
+    setStatus("Enter the laptop's address above first", "error");
+    connectBtn.disabled = false;
+    return;
+  }
+  // Always wss: — the LAN server only serves HTTPS, and if this page is
+  // loaded over https (e.g. GitHub Pages) a plain ws:// would be blocked
+  // as mixed content anyway.
+  ws = new WebSocket(`wss://${addr}`);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "register", role: "listener" }));
+    setStatus("Connected to server. Waiting for laptop...", "");
+  };
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "offer") {
+      await handleOffer(msg.sdp);
+    } else if (msg.type === "ice") {
+      if (pc && msg.candidate) {
+        try { await pc.addIceCandidate(msg.candidate); } catch {}
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    if (shouldStayConnected) scheduleReconnect(false);
+  };
+  ws.onerror = () => ws.close();
+}
+
+async function handleOffer(sdp) {
+  if (pc) pc.close();
+  pc = new RTCPeerConnection({ iceServers: [] }); // LAN only, no STUN needed
+
+  pc.ontrack = (e) => {
+    audioEl.srcObject = e.streams[0];
+    audioEl.muted = false;
+    audioEl.volume = 1;
+    reconnectAttempt = 0;
+    audioEl.play().catch((err) => {
+      console.warn("audio.play() blocked:", err.message);
+      setStatus("Tap the page to enable audio playback", "reconnecting");
+    });
+    setupMeter(e.streams[0]);
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+      if (shouldStayConnected) scheduleReconnect(false);
+    }
+  };
+
+  await pc.setRemoteDescription({ type: "offer", sdp });
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+}
+
+connectBtn.addEventListener("click", connect);
+wakeToggle.addEventListener("change", () => {
+  if (wakeToggle.checked && shouldStayConnected) requestWakeLock();
+  else releaseWakeLock();
+});
+
+setupMediaSession();
+resizeMeterCanvas();
+clearMeterCanvas();
+
+// ---------- PWA install prompt ----------
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.style.display = "inline-block";
+});
+installBtn.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.style.display = "none";
+});
+
+// ---------- Service worker registration ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}
+</script>
+</body>
+</html>
