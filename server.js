@@ -10,16 +10,14 @@
 //   Serves plain HTTP — use this when deploying behind something that already
 //   terminates real TLS for you (a reverse proxy like Caddy/nginx with a
 //   Let's Encrypt cert, or a PaaS like Fly.io/Render that provisions HTTPS
-//   automatically). Also set ACCESS_TOKEN to require a shared token before
-//   anyone can register as a broadcaster or listener — recommended once
-//   this is reachable from the open internet. Set TURN_URLS (and optionally
-//   TURN_USERNAME / TURN_CREDENTIAL) to hand out a TURN relay to clients,
-//   which matters over the internet since direct peer-to-peer often fails
-//   across NAT/firewalls in ways it doesn't on a LAN.
+//   automatically).
 //
-// The server itself never touches audio — it only relays small JSON
-// signaling messages so devices can set up direct (or TURN-relayed) WebRTC
-// connections with each other.
+// The server itself never touches audio, and holds no shared secrets —
+// it only relays small JSON signaling messages so devices can set up direct
+// (or TURN-relayed) WebRTC connections with each other. Access token and
+// STUN/TURN config now live entirely client-side (see app.html) — share a
+// URL with those baked in as query params and the receiving browser caches
+// them in localStorage on first load.
 
 const express = require("express");
 const https = require("https");
@@ -31,35 +29,6 @@ const path = require("path");
 const selfsigned = require("selfsigned");
 
 const TRUST_PROXY = process.env.TRUST_PROXY === "1";
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN || null;
-
-// ICE servers handed out to clients. STUN lets peers discover their public
-// IP:port for direct connections (hole punching handled by the browsers'
-// ICE agents, not by any server). TURN is a relay of last resort for
-// stricter NATs/firewalls where direct punching fails.
-const ICE_SERVERS = [];
-
-if (process.env.STUN_URLS) {
-  ICE_SERVERS.push({ urls: process.env.STUN_URLS.split(",").map((s) => s.trim()) });
-} else if (!process.env.TURN_URLS) {
-  ICE_SERVERS.push({ urls: "stun:stun.l.google.com:19302" }); // default only if nothing custom is configured
-}
-
-if (process.env.TURN_URLS) {
-  const turnUrls = process.env.TURN_URLS.split(",").map((s) => s.trim());
-  ICE_SERVERS.push({
-    urls: turnUrls,
-    username: process.env.TURN_USERNAME || undefined,
-    credential: process.env.TURN_CREDENTIAL || undefined,
-  });
-  // coturn serves STUN and TURN off the same listener by default — unless
-  // STUN_URLS was set explicitly, point STUN at the same host(s) too,
-  // rather than depending on Google's public server as a separate hop.
-  if (!process.env.STUN_URLS) {
-    const derivedStun = turnUrls.map((u) => u.replace(/^turns:/, "stuns:").replace(/^turn:/, "stun:"));
-    ICE_SERVERS.push({ urls: derivedStun });
-  }
-}
 
 const CERT_DIR = path.join(__dirname, "certs");
 const KEY_PATH = path.join(CERT_DIR, "key.pem");
@@ -105,13 +74,6 @@ function ensureCert() {
 
 const app = express();
 app.use(express.static(__dirname + "/public"));
-
-// Clients fetch this to learn which ICE (STUN/TURN) servers to use — keeps
-// TURN credentials out of the static HTML/JS.
-app.get("/ice-config", (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*"); // needed since app.html may be hosted elsewhere (e.g. GitHub Pages)
-  res.json({ iceServers: ICE_SERVERS, accessTokenRequired: !!ACCESS_TOKEN });
-});
 
 let server;
 if (TRUST_PROXY) {
@@ -162,11 +124,6 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "register") {
-      if (ACCESS_TOKEN && msg.token !== ACCESS_TOKEN) {
-        send(ws, { type: "error", message: "Invalid or missing access token" });
-        ws.close();
-        return;
-      }
       role = msg.role;
       if (role === "broadcaster") {
         id = String(nextBroadcasterId++);
@@ -278,11 +235,10 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`per browser.`);
   }
 
-  if (ACCESS_TOKEN) {
-    console.log(`\nAccess token is set — broadcasters and listeners must enter it to connect.`);
-  } else if (TRUST_PROXY) {
-    console.log(`\nWARNING: no ACCESS_TOKEN set while running in internet/proxy mode — anyone`);
-    console.log(`who finds this URL can broadcast or listen. Set ACCESS_TOKEN to restrict it.`);
+  if (TRUST_PROXY) {
+    console.log(`\nWARNING: no access control at the server level in this mode — anyone`);
+    console.log(`who finds this URL can broadcast or listen. Share links deliberately;`);
+    console.log(`see app.html's "Copy shareable link" for baking in a private config.`);
   }
   console.log("");
 });

@@ -51,9 +51,30 @@
     <label for="serverAddr" style="white-space:nowrap; margin:0;">Relay server address:</label>
     <input type="text" id="serverAddr" placeholder="192.168.1.42:3000" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
   </div>
-  <div class="field-row" style="display:flex; align-items:center; gap:8px; text-align:left;">
-    <label for="accessToken" style="white-space:nowrap; margin:0;">Access token:</label>
-    <input type="text" id="accessToken" placeholder="leave blank if not needed" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+
+  <details id="advancedDetails" style="margin-bottom:16px; text-align:left;">
+    <summary style="cursor:pointer; font-size:0.85rem; color:#444;">Advanced: STUN/TURN (coturn, etc.)</summary>
+    <div class="field-row" style="margin-top:12px;">
+      <label for="stunUrls">STUN URL(s), comma-separated</label>
+      <input type="text" id="stunUrls" placeholder="stun:your-coturn-host:3478" />
+    </div>
+    <div class="field-row">
+      <label for="turnUrls">TURN URL(s), comma-separated</label>
+      <input type="text" id="turnUrls" placeholder="turn:your-coturn-host:3478,turns:your-coturn-host:5349" />
+    </div>
+    <div class="field-row">
+      <label for="turnUsername">TURN username</label>
+      <input type="text" id="turnUsername" placeholder="leave blank if not needed" />
+    </div>
+    <div class="field-row">
+      <label for="turnCredential">TURN credential (password)</label>
+      <input type="text" id="turnCredential" placeholder="leave blank if not needed" />
+    </div>
+  </details>
+
+  <div class="field-row">
+    <button id="shareLinkBtn" style="width:100%;">🔗 Copy shareable link (bakes in the fields above)</button>
+    <div id="shareLinkStatus" style="font-size:0.8rem; color:#666; margin-top:6px;"></div>
   </div>
 
   <!-- ===================== Mode picker ===================== -->
@@ -121,11 +142,14 @@
     server prints on startup (e.g. <code>192.168.1.42:3000</code>) — any
     device on the LAN can run it. If you're opening this page directly from
     that server it's filled in automatically; if you're using a version
-    hosted elsewhere (like GitHub Pages), enter it manually — it's
-    remembered for next time, same as the access token. The very first
-    time, open <code>https://&lt;that-address&gt;</code> directly in this
-    browser once and accept the certificate warning, or connections below
-    will fail silently.
+    hosted elsewhere (like GitHub Pages), enter it manually. All the fields
+    above (address, STUN/TURN) are remembered in this browser once set —
+    use <strong>🔗 Copy shareable link</strong> to bundle them into one URL
+    you can send to other devices; opening it caches everything and cleans
+    the values out of the visible address bar automatically. The very first
+    time on a new relay server, open <code>https://&lt;that-address&gt;</code>
+    directly in this browser once and accept the certificate warning, or
+    connections below will fail silently.
   </p>
 
 <script>
@@ -133,7 +157,12 @@
 // Shared: relay address, access token, ICE server config
 // ============================================================
 const serverAddrInput = document.getElementById("serverAddr");
-const accessTokenInput = document.getElementById("accessToken");
+const stunUrlsInput = document.getElementById("stunUrls");
+const turnUrlsInput = document.getElementById("turnUrls");
+const turnUsernameInput = document.getElementById("turnUsername");
+const turnCredentialInput = document.getElementById("turnCredential");
+const shareLinkBtn = document.getElementById("shareLinkBtn");
+const shareLinkStatus = document.getElementById("shareLinkStatus");
 const changeModeBtn = document.getElementById("changeModeBtn");
 const modeSelectWrap = document.getElementById("modeSelectWrap");
 const broadcastSection = document.getElementById("broadcastSection");
@@ -141,42 +170,109 @@ const listenSection = document.getElementById("listenSection");
 
 let mode = null; // null | "broadcast" | "listen"
 
-const ADDR_KEY = "micStreamServerAddress";
-const TOKEN_KEY = "micStreamAccessToken";
-(function initSharedFields() {
-  const saved = localStorage.getItem(ADDR_KEY);
-  if (saved) {
-    serverAddrInput.value = saved;
-  } else if (location.hostname !== "localhost" && !location.hostname.endsWith("github.io")) {
-    // Likely opened directly from the signaling server itself (LAN IP) — default to same-origin.
+// ---------- Config fields: bootstrapped from URL query params on first ----------
+// visit, then cached in localStorage — share a URL once and the recipient ----------
+// never needs it again. No server-side secrets/env vars involved at all. ----------
+const FIELD_KEYS = {
+  addr: ["serverAddr", "micStreamServerAddress"],
+  stun: ["stunUrls", "micStreamStunUrls"],
+  turn: ["turnUrls", "micStreamTurnUrls"],
+  turnUser: ["turnUsername", "micStreamTurnUsername"],
+  turnCred: ["turnCredential", "micStreamTurnCredential"],
+};
+const fieldEls = {
+  serverAddr: serverAddrInput,
+  stunUrls: stunUrlsInput,
+  turnUrls: turnUrlsInput,
+  turnUsername: turnUsernameInput,
+  turnCredential: turnCredentialInput,
+};
+
+(function bootstrapConfig() {
+  const params = new URLSearchParams(location.search);
+  let gotAnyParam = false;
+
+  for (const [param, [elId, storageKey]] of Object.entries(FIELD_KEYS)) {
+    const fromUrl = params.get(param);
+    if (fromUrl) {
+      localStorage.setItem(storageKey, fromUrl);
+      gotAnyParam = true;
+    }
+    fieldEls[elId].value = localStorage.getItem(storageKey) || "";
+  }
+
+  // Default the address field to same-origin if nothing saved/shared yet,
+  // and we're likely opened directly from the relay server itself.
+  if (!serverAddrInput.value && location.hostname !== "localhost" && !location.hostname.endsWith("github.io")) {
     serverAddrInput.value = location.host;
   }
-  accessTokenInput.value = localStorage.getItem(TOKEN_KEY) || "";
+
+  // Strip config out of the visible URL/history once cached — it did its job.
+  if (gotAnyParam) {
+    const clean = new URL(location.href);
+    for (const param of Object.keys(FIELD_KEYS)) clean.searchParams.delete(param);
+    history.replaceState(null, "", clean.pathname + clean.search + clean.hash);
+  }
 })();
-serverAddrInput.addEventListener("change", () => {
-  localStorage.setItem(ADDR_KEY, serverAddrInput.value.trim());
-});
-accessTokenInput.addEventListener("change", () => {
-  localStorage.setItem(TOKEN_KEY, accessTokenInput.value.trim());
-});
+
+for (const [elId, storageKey] of Object.values(FIELD_KEYS)) {
+  fieldEls[elId].addEventListener("change", () => {
+    localStorage.setItem(storageKey, fieldEls[elId].value.trim());
+  });
+}
 
 function getServerAddress() {
   const addr = serverAddrInput.value.trim();
-  if (addr) localStorage.setItem(ADDR_KEY, addr);
+  if (addr) localStorage.setItem(FIELD_KEYS.addr[1], addr);
   return addr;
 }
 
-let iceServers = [{ urls: "stun:stun.l.google.com:19302" }]; // fallback default
-async function refreshIceServers(addr) {
-  try {
-    const res = await fetch(`https://${addr}/ice-config`);
-    const cfg = await res.json();
-    if (cfg.iceServers) iceServers = cfg.iceServers;
-  } catch {
-    // Keep the STUN-only fallback — fine for LAN/simple NAT, may not work
-    // for stricter internet NATs without a configured TURN server.
+// ICE servers built entirely client-side from the fields above — no server
+// round-trip, no server-held secret.
+function buildIceServers() {
+  const arr = [];
+  const stun = stunUrlsInput.value.trim();
+  const turn = turnUrlsInput.value.trim();
+
+  if (stun) {
+    arr.push({ urls: stun.split(",").map((s) => s.trim()) });
+  } else if (!turn) {
+    arr.push({ urls: "stun:stun.l.google.com:19302" }); // default only if nothing custom is set
   }
+
+  if (turn) {
+    const turnUrls = turn.split(",").map((s) => s.trim());
+    arr.push({
+      urls: turnUrls,
+      username: turnUsernameInput.value.trim() || undefined,
+      credential: turnCredentialInput.value.trim() || undefined,
+    });
+    // coturn serves STUN and TURN off the same listener by default — unless
+    // a STUN URL was set explicitly, point STUN at the same host(s) too.
+    if (!stun) {
+      const derived = turnUrls.map((u) => u.replace(/^turns:/, "stuns:").replace(/^turn:/, "stun:"));
+      arr.push({ urls: derived });
+    }
+  }
+  return arr;
 }
+let iceServers = buildIceServers();
+
+shareLinkBtn.addEventListener("click", async () => {
+  const url = new URL(location.origin + location.pathname);
+  if (serverAddrInput.value.trim()) url.searchParams.set("addr", serverAddrInput.value.trim());
+  if (stunUrlsInput.value.trim()) url.searchParams.set("stun", stunUrlsInput.value.trim());
+  if (turnUrlsInput.value.trim()) url.searchParams.set("turn", turnUrlsInput.value.trim());
+  if (turnUsernameInput.value.trim()) url.searchParams.set("turnUser", turnUsernameInput.value.trim());
+  if (turnCredentialInput.value.trim()) url.searchParams.set("turnCred", turnCredentialInput.value.trim());
+
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    shareLinkStatus.textContent = "Copied! Whoever opens it gets these fields pre-filled and cached.";
+  } catch {
+    shareLinkStatus.textContent = url.toString(); // clipboard blocked — show it to copy manually
+  }
+});
 
 // ============================================================
 // Mode picker
@@ -260,7 +356,7 @@ async function bcStart() {
   }
   bcStartBtn.disabled = true;
   deviceNameInput.disabled = true;
-  await refreshIceServers(addr);
+  iceServers = buildIceServers();
   try {
     bcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   } catch (err) {
@@ -293,7 +389,7 @@ function bcConnectSignaling(addr) {
   const name = deviceNameInput.value.trim() || defaultDeviceName();
 
   bcWs.onopen = () => {
-    bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name, token: accessTokenInput.value.trim() }));
+    bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name }));
   };
 
   bcWs.onmessage = async (event) => {
@@ -765,7 +861,7 @@ function connect() {
   connectBtn.disabled = true;
   setStatus("Connecting...", "");
   requestWakeLock();
-  refreshIceServers(addr);
+  iceServers = buildIceServers();
   ensureNotificationPermission().then((granted) => {
     if (granted) showStatusNotification("connecting");
   });
@@ -817,7 +913,7 @@ function openSocket() {
   ws = new WebSocket(`wss://${addr}`);
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({ type: "register", role: "listener", token: accessTokenInput.value.trim() }));
+    ws.send(JSON.stringify({ type: "register", role: "listener" }));
     setStatus("Connected to server. Waiting for broadcaster list...", "");
     startHeartbeat();
   };
