@@ -36,7 +36,10 @@ self.addEventListener("fetch", (event) => {
     fetch(event.request)
       .then((res) => {
         const copy = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        caches.open(CACHE).then((cache) => {
+          if (!/^https?:$/i.test(new URL(event.request.url).protocol)) return;
+          cache.put(event.request, copy)
+        });
         return res;
       })
       .catch(() => caches.match(event.request))
