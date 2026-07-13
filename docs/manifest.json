@@ -2,7 +2,7 @@
   "name": "Mic Stream Listener",
   "short_name": "MicStream",
   "description": "Live mic audio from your laptop, streamed over LAN",
-  "start_url": "./listener.html",
+  "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

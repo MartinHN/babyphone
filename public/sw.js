@@ -3,9 +3,9 @@
 // signaling or WebRTC media traffic, only the static app shell, so the
 // page always tries the network first for everything that matters.
 
-const CACHE = "mic-stream-shell-v1";
+const CACHE = "mic-stream-shell-v2";
 const SHELL_FILES = [
-  "listener.html",
+  "app.html",
   "manifest.json",
   "icons/icon-192.png",
   "icons/icon-512.png",

@@ -1,29 +1,65 @@
-// Mic Stream — LAN WebRTC signaling server
+// Mic Stream — WebRTC signaling server (LAN or internet)
 //
-// Run:  node server.js
-// Then on the LAPTOP open:  https://localhost:3000/broadcaster.html
-// And on the PHONE open:    https://<laptop-lan-ip>:3000/listener.html
+// LAN mode (default):
+//   node server.js
+//   Serves self-signed HTTPS directly. Open https://<lan-ip>:3000/app.html
+//   on any device — pick "Broadcast" or "Listen" from the in-app menu.
+//
+// Internet mode:
+//   TRUST_PROXY=1 node server.js
+//   Serves plain HTTP — use this when deploying behind something that already
+//   terminates real TLS for you (a reverse proxy like Caddy/nginx with a
+//   Let's Encrypt cert, or a PaaS like Fly.io/Render that provisions HTTPS
+//   automatically). Also set ACCESS_TOKEN to require a shared token before
+//   anyone can register as a broadcaster or listener — recommended once
+//   this is reachable from the open internet. Set TURN_URLS (and optionally
+//   TURN_USERNAME / TURN_CREDENTIAL) to hand out a TURN relay to clients,
+//   which matters over the internet since direct peer-to-peer often fails
+//   across NAT/firewalls in ways it doesn't on a LAN.
 //
 // The server itself never touches audio — it only relays small JSON
-// signaling messages so the two browsers can set up a direct WebRTC
-// connection. Audio then flows peer-to-peer over your LAN.
-//
-// This serves HTTPS with a self-signed certificate (auto-generated on
-// first run, covering your LAN IPs). That's required because service
-// workers, the notification API, and the "Install App" prompt only work
-// in a "secure context" — plain http:// on a LAN IP does NOT count as
-// one (only https:// or localhost do), so without this none of that
-// would work on the phone. Your phone's browser will show a
-// certificate warning the first time — that's expected for a
-// self-signed cert; tap through "Advanced -> Proceed" once.
+// signaling messages so devices can set up direct (or TURN-relayed) WebRTC
+// connections with each other.
 
 const express = require("express");
 const https = require("https");
+const http = require("http");
 const { WebSocketServer } = require("ws");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
 const selfsigned = require("selfsigned");
+
+const TRUST_PROXY = process.env.TRUST_PROXY === "1";
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN || null;
+
+// ICE servers handed out to clients. STUN lets peers discover their public
+// IP:port for direct connections (hole punching handled by the browsers'
+// ICE agents, not by any server). TURN is a relay of last resort for
+// stricter NATs/firewalls where direct punching fails.
+const ICE_SERVERS = [];
+
+if (process.env.STUN_URLS) {
+  ICE_SERVERS.push({ urls: process.env.STUN_URLS.split(",").map((s) => s.trim()) });
+} else if (!process.env.TURN_URLS) {
+  ICE_SERVERS.push({ urls: "stun:stun.l.google.com:19302" }); // default only if nothing custom is configured
+}
+
+if (process.env.TURN_URLS) {
+  const turnUrls = process.env.TURN_URLS.split(",").map((s) => s.trim());
+  ICE_SERVERS.push({
+    urls: turnUrls,
+    username: process.env.TURN_USERNAME || undefined,
+    credential: process.env.TURN_CREDENTIAL || undefined,
+  });
+  // coturn serves STUN and TURN off the same listener by default — unless
+  // STUN_URLS was set explicitly, point STUN at the same host(s) too,
+  // rather than depending on Google's public server as a separate hop.
+  if (!process.env.STUN_URLS) {
+    const derivedStun = turnUrls.map((u) => u.replace(/^turns:/, "stuns:").replace(/^turn:/, "stun:"));
+    ICE_SERVERS.push({ urls: derivedStun });
+  }
+}
 
 const CERT_DIR = path.join(__dirname, "certs");
 const KEY_PATH = path.join(CERT_DIR, "key.pem");
@@ -70,22 +106,47 @@ function ensureCert() {
 const app = express();
 app.use(express.static(__dirname + "/public"));
 
-const { key, cert } = ensureCert();
-const server = https.createServer({ key, cert }, app);
+// Clients fetch this to learn which ICE (STUN/TURN) servers to use — keeps
+// TURN credentials out of the static HTML/JS.
+app.get("/ice-config", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*"); // needed since app.html may be hosted elsewhere (e.g. GitHub Pages)
+  res.json({ iceServers: ICE_SERVERS, accessTokenRequired: !!ACCESS_TOKEN });
+});
+
+let server;
+if (TRUST_PROXY) {
+  server = http.createServer(app);
+} else {
+  const { key, cert } = ensureCert();
+  server = https.createServer({ key, cert }, app);
+}
 const wss = new WebSocketServer({ server });
 
-let broadcaster = null; // the single laptop connection
-const listeners = new Map(); // id -> ws
+const broadcasters = new Map(); // id -> { ws, name }
+const listeners = new Map(); // id -> { ws, broadcasterId }
+let nextBroadcasterId = 1;
+let nextListenerId = 1;
 
 function send(ws, msg) {
   if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
-let nextId = 1;
+function broadcasterList() {
+  return Array.from(broadcasters.entries()).map(([id, b]) => ({ id, name: b.name }));
+}
+
+function pushBroadcasterListToAllListeners() {
+  const list = broadcasterList();
+  for (const { ws } of listeners.values()) {
+    send(ws, { type: "broadcaster-list", broadcasters: list });
+  }
+}
 
 wss.on("connection", (ws) => {
   let role = null;
   let id = null;
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
 
   ws.on("message", (raw) => {
     let msg;
@@ -95,63 +156,133 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (msg.type === "ping") {
+      send(ws, { type: "pong" });
+      return;
+    }
+
     if (msg.type === "register") {
+      if (ACCESS_TOKEN && msg.token !== ACCESS_TOKEN) {
+        send(ws, { type: "error", message: "Invalid or missing access token" });
+        ws.close();
+        return;
+      }
       role = msg.role;
       if (role === "broadcaster") {
-        broadcaster = ws;
-        console.log("Broadcaster (laptop) connected");
-        // Tell it about any listeners already waiting
-        for (const lid of listeners.keys()) {
-          send(broadcaster, { type: "listener-join", id: lid });
-        }
-      } else if (role === "listener") {
-        id = String(nextId++);
-        listeners.set(id, ws);
+        id = String(nextBroadcasterId++);
+        const name = (msg.name || "Unnamed device").slice(0, 60);
+        broadcasters.set(id, { ws, name });
         send(ws, { type: "welcome", id });
-        console.log(`Listener (phone) connected: ${id}`);
-        if (broadcaster) send(broadcaster, { type: "listener-join", id });
+        console.log(`Broadcaster connected: "${name}" (${id})`);
+        pushBroadcasterListToAllListeners();
+      } else if (role === "listener") {
+        id = String(nextListenerId++);
+        listeners.set(id, { ws, broadcasterId: null });
+        send(ws, { type: "welcome", id });
+        send(ws, { type: "broadcaster-list", broadcasters: broadcasterList() });
+        console.log(`Listener connected: ${id}`);
       }
       return;
     }
 
-    // Relay signaling messages between broadcaster and a specific listener
+    if (msg.type === "list-broadcasters" && role === "listener") {
+      send(ws, { type: "broadcaster-list", broadcasters: broadcasterList() });
+      return;
+    }
+
+    // A listener picks which broadcaster to receive audio from
+    if (msg.type === "listen" && role === "listener") {
+      const target = broadcasters.get(msg.broadcasterId);
+      if (!target) {
+        send(ws, { type: "broadcaster-gone", id: msg.broadcasterId });
+        return;
+      }
+      const listener = listeners.get(id);
+      listener.broadcasterId = msg.broadcasterId;
+      send(target.ws, { type: "listener-join", id });
+      return;
+    }
+
+    // Relay signaling messages between a broadcaster and one of its listeners
     if (msg.type === "offer" && role === "broadcaster") {
-      send(listeners.get(msg.id), { type: "offer", sdp: msg.sdp, id: msg.id });
+      const listener = listeners.get(msg.id);
+      if (listener) send(listener.ws, { type: "offer", sdp: msg.sdp, id: msg.id });
     } else if (msg.type === "answer" && role === "listener") {
-      send(broadcaster, { type: "answer", sdp: msg.sdp, id });
+      const listener = listeners.get(id);
+      const b = listener && broadcasters.get(listener.broadcasterId);
+      if (b) send(b.ws, { type: "answer", sdp: msg.sdp, id });
     } else if (msg.type === "ice") {
       if (role === "broadcaster") {
-        send(listeners.get(msg.id), { type: "ice", candidate: msg.candidate, id: msg.id });
+        const listener = listeners.get(msg.id);
+        if (listener) send(listener.ws, { type: "ice", candidate: msg.candidate, id: msg.id });
       } else if (role === "listener") {
-        send(broadcaster, { type: "ice", candidate: msg.candidate, id });
+        const listener = listeners.get(id);
+        const b = listener && broadcasters.get(listener.broadcasterId);
+        if (b) send(b.ws, { type: "ice", candidate: msg.candidate, id });
       }
     }
   });
 
   ws.on("close", () => {
-    if (role === "broadcaster") {
-      broadcaster = null;
-      console.log("Broadcaster disconnected");
+    if (role === "broadcaster" && id) {
+      const b = broadcasters.get(id);
+      broadcasters.delete(id);
+      console.log(`Broadcaster disconnected: "${b ? b.name : "?"}" (${id})`);
+      // Tell any listeners currently tuned into this broadcaster it's gone
+      for (const [lid, listener] of listeners.entries()) {
+        if (listener.broadcasterId === id) {
+          send(listener.ws, { type: "broadcaster-gone", id });
+        }
+      }
+      pushBroadcasterListToAllListeners();
     } else if (role === "listener" && id) {
+      const listener = listeners.get(id);
       listeners.delete(id);
-      if (broadcaster) send(broadcaster, { type: "listener-leave", id });
+      if (listener && listener.broadcasterId) {
+        const b = broadcasters.get(listener.broadcasterId);
+        if (b) send(b.ws, { type: "listener-leave", id });
+      }
       console.log(`Listener disconnected: ${id}`);
     }
   });
 });
 
+// Protocol-level ping every 10s — catches connections that are dead at the
+// TCP/network level but haven't fired a 'close' event yet (common on mobile
+// networks switching, laptop sleep, etc). Without this, a stale connection
+// can sit unnoticed for a long time.
+const HEARTBEAT_MS = 10000;
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate(); // no pong since last check — drop it
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_MS);
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
-  const addrs = getLanAddresses();
-  console.log(`\nMic Stream server running on port ${PORT} (HTTPS)`);
-  console.log(`On this laptop, open:  https://localhost:${PORT}/broadcaster.html`);
-  if (addrs.length) {
-    console.log(`On your phone, open:   https://${addrs[0]}:${PORT}/listener.html`);
+  console.log(`\nMic Stream server running on port ${PORT} (${TRUST_PROXY ? "HTTP, behind proxy" : "HTTPS, self-signed"})`);
+
+  if (TRUST_PROXY) {
+    console.log(`Running in internet/proxy mode. Make sure whatever sits in front of this`);
+    console.log(`(reverse proxy or PaaS) terminates real HTTPS and forwards here on port ${PORT}.`);
+    console.log(`Open: https://<your-public-domain>/app.html (pick Broadcast or Listen in-app)`);
   } else {
-    console.log(`Find this laptop's LAN IP and open https://<that-ip>:${PORT}/listener.html on your phone`);
+    const addrs = getLanAddresses();
+    const host = addrs[0] || "<this-device-lan-ip>";
+    console.log(`Open: https://${host}:${PORT}/app.html (pick Broadcast or Listen in-app)`);
+    console.log(`\nYour browser will warn about an untrusted certificate the first`);
+    console.log(`time — that's expected for a self-signed cert. Tap "Advanced" ->`);
+    console.log(`"Proceed" (or equivalent) to continue. You only need to do this once`);
+    console.log(`per browser.`);
   }
-  console.log(`\nYour browser/phone will warn about an untrusted certificate the first`);
-  console.log(`time — that's expected for a self-signed cert. Tap "Advanced" ->`);
-  console.log(`"Proceed" (or equivalent) to continue. You only need to do this once`);
-  console.log(`per browser.\n`);
+
+  if (ACCESS_TOKEN) {
+    console.log(`\nAccess token is set — broadcasters and listeners must enter it to connect.`);
+  } else if (TRUST_PROXY) {
+    console.log(`\nWARNING: no ACCESS_TOKEN set while running in internet/proxy mode — anyone`);
+    console.log(`who finds this URL can broadcast or listen. Set ACCESS_TOKEN to restrict it.`);
+  }
+  console.log("");
 });
