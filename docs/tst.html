@@ -2,38 +2,269 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>WebRTC Manual Audio Call</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebRTC Audio Call (QR)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
-  h1 { font-size: 1.3em; }
-  textarea { width: 100%; height: 100px; font-family: monospace; font-size: 12px; margin-top: 6px; }
-  button { padding: 8px 14px; margin: 6px 6px 6px 0; cursor: pointer; }
-  .step { border: 1px solid #ccc; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+  body { font-family: system-ui, sans-serif; max-width: 500px; margin: 20px auto; padding: 0 16px; }
+  h1 { font-size: 1.2em; }
+  .step { border: 1px solid #ccc; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
   .status { font-weight: bold; }
-  label { display: block; margin-top: 10px; font-weight: 600; }
+  button { padding: 10px 16px; margin: 6px 6px 6px 0; cursor: pointer; font-size: 15px; }
+  #qrDisplay { display: flex; justify-content: center; margin: 12px 0; }
+  video { width: 100%; border-radius: 8px; background: #000; }
+  textarea { width: 100%; height: 70px; font-family: monospace; font-size: 11px; margin-top: 6px; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .small { font-size: 12px; color: #555; }
 </style>
 </head>
 <body>
 
-<h1>🎙️ WebRTC Manual Audio Call (no server)</h1>
-<p>Open this file in two browser windows (same machine, or two machines on the same LAN).
-In Window A, click "Start Call". In Window B, click "Join Call". Copy/paste the text boxes between them as instructed.</p>
+<h1>🎙️ WebRTC Audio Call — QR Exchange</h1>
+<p class="small">Phone A: tap "Start Call". Phone B: tap "Join Call". Show each phone's QR code to the other phone's camera when prompted.</p>
 
 <div class="step">
-  <button id="startCall">1. Start Call (Caller)</button>
-  <button id="joinCall">1. Join Call (Answerer)</button>
-  <p class="status" id="status">Idle. Click a button above to begin.</p>
+  <button id="startCall">Start Call (Caller)</button>
+  <button id="joinCall">Join Call (Answerer)</button>
+  <p class="status" id="status">Idle.</p>
 </div>
 
-<div class="step" id="offerBox" style="display:none;">
-  <label>Your Offer — copy this and send it to the other window:</label>
-  <textarea id="localOffer" readonly></textarea>
-
-  <label>Paste the other window's Answer here:</label>
-  <textarea id="remoteAnswer"></textarea>
-  <button id="submitAnswer">2. Connect</button>
+<!-- CALLER FLOW -->
+<div class="step" id="callerStep1" style="display:none;">
+  <p><strong>Show this QR to Phone B, then scan Phone B's answer QR.</strong></p>
+  <div id="qrDisplayA"></div>
+  <details>
+    <summary>Raw text (backup)</summary>
+    <textarea id="localOfferText" readonly></textarea>
+    <button id="copyOffer">Copy to clipboard</button>
+  </details>
+  <button id="scanAnswerBtn">Scan Phone B's Answer QR</button>
+  <video id="videoA" playsinline style="display:none;"></video>
+  <details style="margin-top:8px;">
+    <summary>Or paste answer text manually</summary>
+    <textarea id="remoteAnswerText" placeholder="Paste answer JSON here"></textarea>
+    <button id="submitAnswerText">Use pasted text</button>
+  </details>
 </div>
 
+<!-- ANSWERER FLOW -->
+<div class="step" id="answerStep1" style="display:none;">
+  <p><strong>Scan Phone A's offer QR first.</strong></p>
+  <button id="scanOfferBtn">Scan Phone A's Offer QR</button>
+  <video id="videoB" playsinline style="display:none;"></video>
+  <details style="margin-top:8px;">
+    <summary>Or paste offer text manually</summary>
+    <textarea id="remoteOfferText" placeholder="Paste offer JSON here"></textarea>
+    <button id="submitOfferText">Use pasted text</button>
+  </details>
+</div>
+
+<div class="step" id="answerStep2" style="display:none;">
+  <p><strong>Show this QR back to Phone A.</strong></p>
+  <div id="qrDisplayB"></div>
+  <details>
+    <summary>Raw text (backup)</summary>
+    <textarea id="localAnswerText" readonly></textarea>
+    <button id="copyAnswer">Copy to clipboard</button>
+  </details>
+</div>
+
+<div class="step">
+  <h3>Audio</h3>
+  <audio id="remoteAudio" autoplay controls></audio>
+</div>
+
+<canvas id="scanCanvas" style="display:none;"></canvas>
+
+<script>
+const statusEl = document.getElementById('status');
+let pc;
+let scanStream = null;
+let scanning = false;
+
+function log(msg) { statusEl.textContent = msg; console.log(msg); }
+
+async function waitForIceGathering(pc) {
+  if (pc.iceGatheringState === 'complete') return;
+  await new Promise(resolve => {
+    function check() {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    }
+    pc.addEventListener('icegatheringstatechange', check);
+  });
+}
+
+function setupPeerConnection() {
+  pc = new RTCPeerConnection();
+  pc.ontrack = (e) => {
+    document.getElementById('remoteAudio').srcObject = e.streams[0];
+    log('✅ Connected — audio should be playing.');
+  };
+  pc.onconnectionstatechange = () => log('Connection state: ' + pc.connectionState);
+  return pc;
+}
+
+async function getMic() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    log('❌ Microphone access denied: ' + err.message);
+    throw err;
+  }
+}
+
+function renderQR(elementId, text) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = '';
+  new QRCode(el, {
+    text: text,
+    width: 260,
+    height: 260,
+    correctLevel: QRCode.CorrectLevel.L
+  });
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = original, 1200);
+  }).catch(() => log('Clipboard copy failed — select text manually.'));
+}
+
+async function scanQR(videoEl, onResult) {
+  const canvas = document.getElementById('scanCanvas');
+  const ctx = canvas.getContext('2d');
+  scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  videoEl.srcObject = scanStream;
+  videoEl.style.display = 'block';
+  await videoEl.play();
+  scanning = true;
+  log('📷 Scanning... point camera at the other phone\'s QR code.');
+
+  function tick() {
+    if (!scanning) return;
+    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      if (code) {
+        stopScanning(videoEl);
+        onResult(code.data);
+        return;
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function stopScanning(videoEl) {
+  scanning = false;
+  if (scanStream) {
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+  videoEl.style.display = 'none';
+}
+
+// ---------- CALLER ----------
+document.getElementById('startCall').onclick = async () => {
+  document.getElementById('callerStep1').style.display = 'block';
+  log('Requesting microphone...');
+  setupPeerConnection();
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  const offerText = JSON.stringify(pc.localDescription);
+  document.getElementById('localOfferText').value = offerText;
+  try {
+    renderQR('qrDisplayA', offerText);
+    log('Offer QR ready. Show it to Phone B.');
+  } catch (e) {
+    log('⚠️ Offer too large for QR — use the copy/paste text backup instead.');
+  }
+};
+
+document.getElementById('copyOffer').onclick = (e) => {
+  copyToClipboard(document.getElementById('localOfferText').value, e.target);
+};
+
+document.getElementById('scanAnswerBtn').onclick = () => {
+  scanQR(document.getElementById('videoA'), async (data) => {
+    log('Answer scanned. Connecting...');
+    await pc.setRemoteDescription(JSON.parse(data));
+  });
+};
+
+document.getElementById('submitAnswerText').onclick = async () => {
+  const text = document.getElementById('remoteAnswerText').value.trim();
+  if (!text) { log('Paste the answer text first.'); return; }
+  await pc.setRemoteDescription(JSON.parse(text));
+  log('Answer applied. Connecting...');
+};
+
+// ---------- ANSWERER ----------
+document.getElementById('joinCall').onclick = () => {
+  document.getElementById('answerStep1').style.display = 'block';
+  setupPeerConnection();
+  log('Ready. Scan Phone A\'s offer QR.');
+};
+
+document.getElementById('scanOfferBtn').onclick = () => {
+  scanQR(document.getElementById('videoB'), async (data) => {
+    log('Offer scanned. Requesting microphone...');
+    await pc.setRemoteDescription(JSON.parse(data));
+    await generateAnswer();
+  });
+};
+
+document.getElementById('submitOfferText').onclick = async () => {
+  const text = document.getElementById('remoteOfferText').value.trim();
+  if (!text) { log('Paste the offer text first.'); return; }
+  await pc.setRemoteDescription(JSON.parse(text));
+  await generateAnswer();
+};
+
+async function generateAnswer() {
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  const answerText = JSON.stringify(pc.localDescription);
+  document.getElementById('answerStep2').style.display = 'block';
+  document.getElementById('localAnswerText').value = answerText;
+  try {
+    renderQR('qrDisplayB', answerText);
+    log('Answer QR ready. Show it back to Phone A.');
+  } catch (e) {
+    log('⚠️ Answer too large for QR — use the copy/paste text backup instead.');
+  }
+}
+
+document.getElementById('copyAnswer').onclick = (e) => {
+  copyToClipboard(document.getElementById('localAnswerText').value, e.target);
+};
+</script>
+
+</body>
+</html>
 <div class="step" id="answerBox" style="display:none;">
   <label>Paste the Caller's Offer here:</label>
   <textarea id="remoteOffer"></textarea>
