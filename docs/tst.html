@@ -29,11 +29,449 @@
   <button id="startCall">Start Call (Caller)</button>
   <button id="joinCall">Join Call (Answerer)</button>
   <p class="status" id="status">Idle.</p>
+  <label style="font-weight:normal; display:flex; align-items:center; gap:6px; margin-top:8px;">
+    <input type="checkbox" id="gzipToggle" checked style="width:auto; margin:0;">
+    Compress QR with gzip <span id="gzipSupportNote" class="small"></span>
+  </label>
 </div>
 
 <!-- CALLER FLOW -->
 <div class="step" id="callerStep1" style="display:none;">
   <p><strong>Show this QR to Phone B, then scan Phone B's answer QR.</strong></p>
+  <div id="qrDisplayA"></div>
+  <details>
+    <summary>Raw text (backup)</summary>
+    <textarea id="localOfferText" readonly></textarea>
+    <button id="copyOffer">Copy to clipboard</button>
+  </details>
+  <button id="scanAnswerBtn">Scan Phone B's Answer QR</button>
+  <button id="switchCamA" style="display:none;">Switch Camera</button>
+  <video id="videoA" playsinline autoplay muted style="display:none;"></video>
+  <details style="margin-top:8px;">
+    <summary>Or paste answer text manually</summary>
+    <textarea id="remoteAnswerText" placeholder="Paste answer JSON here"></textarea>
+    <button id="submitAnswerText">Use pasted text</button>
+  </details>
+</div>
+
+<!-- ANSWERER FLOW -->
+<div class="step" id="answerStep1" style="display:none;">
+  <p><strong>Scan Phone A's offer QR first.</strong></p>
+  <button id="scanOfferBtn">Scan Phone A's Offer QR</button>
+  <button id="switchCamB" style="display:none;">Switch Camera</button>
+  <video id="videoB" playsinline autoplay muted style="display:none;"></video>
+  <details style="margin-top:8px;">
+    <summary>Or paste offer text manually</summary>
+    <textarea id="remoteOfferText" placeholder="Paste offer JSON here"></textarea>
+    <button id="submitOfferText">Use pasted text</button>
+  </details>
+</div>
+
+<div class="step" id="answerStep2" style="display:none;">
+  <p><strong>Show this QR back to Phone A.</strong></p>
+  <div id="qrDisplayB"></div>
+  <details>
+    <summary>Raw text (backup)</summary>
+    <textarea id="localAnswerText" readonly></textarea>
+    <button id="copyAnswer">Copy to clipboard</button>
+  </details>
+</div>
+
+<div class="step">
+  <h3>Audio</h3>
+  <audio id="remoteAudio" autoplay controls></audio>
+</div>
+
+<canvas id="scanCanvas" style="display:none;"></canvas>
+
+<script>
+const statusEl = document.getElementById('status');
+let pc;
+let scanStream = null;
+let scanning = false;
+
+function log(msg) { statusEl.textContent = msg; console.log(msg); }
+
+async function waitForIceGathering(pc) {
+  if (pc.iceGatheringState === 'complete') return;
+  await new Promise(resolve => {
+    function check() {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    }
+    pc.addEventListener('icegatheringstatechange', check);
+  });
+}
+
+function setupPeerConnection() {
+  pc = new RTCPeerConnection();
+  pc.ontrack = (e) => {
+    document.getElementById('remoteAudio').srcObject = e.streams[0];
+    log('✅ Connected — audio should be playing.');
+  };
+  pc.onconnectionstatechange = () => log('Connection state: ' + pc.connectionState);
+  return pc;
+}
+
+async function getMic() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    console.error('Microphone open error:', err.name, err.message, err);
+    log(`❌ Microphone access denied — ${err.name}: ${err.message}`);
+    throw err;
+  }
+}
+
+function renderQR(elementId, bytes) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = '';
+  return new Promise((resolve, reject) => {
+    // Byte-mode segment: raw bytes go straight into the QR, no text/UTF-8 re-encoding, no base64.
+    const segments = [{ data: Array.from(bytes), mode: 'byte' }];
+    QRCode.toDataURL(segments, { errorCorrectionLevel: 'L', margin: 1, scale: 6 }, (err, url) => {
+      if (err) { reject(err); return; }
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'QR code';
+      img.style.width = '100%';
+      img.style.maxWidth = '280px';
+      img.style.display = 'block';
+      img.style.margin = '0 auto';
+      el.appendChild(img);
+      resolve();
+    });
+  });
+}
+
+// ---------- Compression helpers (native gzip via CompressionStream) ----------
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function gzipCompressToBytes(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function gzipDecompressBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return await new Response(stream).text();
+}
+
+const compressionSupported = ('CompressionStream' in window) && ('DecompressionStream' in window);
+
+const gzipToggle = document.getElementById('gzipToggle');
+const gzipSupportNote = document.getElementById('gzipSupportNote');
+if (!compressionSupported) {
+  gzipToggle.checked = false;
+  gzipToggle.disabled = true;
+  gzipSupportNote.textContent = '(not supported in this browser)';
+}
+
+// gzip streams always start with the magic bytes 0x1F 0x8B, so we can detect
+// compression on the decoding side just by looking at the payload — no custom
+// marker byte needed.
+function looksGzipped(bytes) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+// Builds the raw byte payload for the QR code. If the gzip toggle is on (and the
+// browser supports it), this is just the gzip bytes — self-identifying via the
+// magic header above. Otherwise, it's the plain UTF-8 JSON bytes.
+async function encodeToBytes(descriptionObj) {
+  const json = JSON.stringify(descriptionObj);
+  if (gzipToggle.checked && compressionSupported) {
+    try {
+      return await gzipCompressToBytes(json);
+    } catch (e) {
+      console.warn('Compression failed, falling back to plain JSON', e);
+    }
+  }
+  return new TextEncoder().encode(json);
+}
+
+async function decodeFromBytes(bytes) {
+  bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (looksGzipped(bytes)) {
+    if (!compressionSupported) {
+      throw new Error('This payload is gzip-compressed but this browser can\'t decompress gzip — try a newer browser, or use the text backup.');
+    }
+    const json = await gzipDecompressBytes(bytes);
+    return JSON.parse(json);
+  }
+  const json = new TextDecoder().decode(bytes);
+  return JSON.parse(json);
+}
+
+// Human-readable text version (for the textarea/clipboard backup): always plain,
+// uncompressed JSON — easy to read, copy, and paste, regardless of what the QR uses.
+function toBackupText(descriptionObj) {
+  return JSON.stringify(descriptionObj);
+}
+
+async function backupTextToBytes(text) {
+  text = text.trim();
+  // Backward compatibility with the earlier gzipped-text format, in case an old
+  // QR/text pair is still floating around.
+  if (text.startsWith('gz:')) {
+    return new Uint8Array(base64ToArrayBuffer(text.slice(3))); // already gzip bytes, self-identifying
+  }
+  if (text.startsWith('raw:')) {
+    text = text.slice(4);
+  }
+  // Plain JSON (the normal case)
+  return new TextEncoder().encode(text);
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = original, 1200);
+  }).catch(() => log('Clipboard copy failed — select text manually.'));
+}
+
+async function scanQR(videoEl, onResult, switchBtn) {
+  const canvas = document.getElementById('scanCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Make sure any previous camera stream is fully released first
+  if (scanStream) {
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+
+  // Build a list of available cameras so we can offer manual switching
+  // (some Android phones have multiple rear lenses; 'environment' sometimes
+  // binds to one that opens but never actually delivers frames — no JS error).
+  let videoDevices = [];
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d => d.kind === 'videoinput');
+  } catch (e) {
+    console.warn('enumerateDevices failed:', e);
+  }
+  let deviceIndex = 0;
+
+  async function openCamera() {
+    if (scanStream) {
+      scanStream.getTracks().forEach(t => t.stop());
+      scanStream = null;
+    }
+    try {
+      if (videoDevices.length > 0) {
+        const deviceId = videoDevices[deviceIndex % videoDevices.length].deviceId;
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
+      } else {
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      }
+    } catch (err) {
+      console.error('Camera open error:', err.name, err.message, err);
+      log(`⚠️ Camera failed (${err.name}: ${err.message}). Trying default camera...`);
+      try {
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (err2) {
+        console.error('Camera open error (default camera attempt):', err2.name, err2.message, err2);
+        log(`❌ Camera access failed — ${err2.name}: ${err2.message}`);
+        return false;
+      }
+    }
+
+    videoEl.srcObject = scanStream;
+    videoEl.style.display = 'block';
+    try {
+      await videoEl.play();
+    } catch (err) {
+      console.error('Video play() error:', err.name, err.message, err);
+      log(`❌ Video failed to start playing — ${err.name}: ${err.message}`);
+      return false;
+    }
+
+    // Log what we actually got, to help diagnose black-frame issues
+    const track = scanStream.getVideoTracks()[0];
+    if (track) {
+      const settings = track.getSettings ? track.getSettings() : {};
+      console.log('Active camera track:', track.label, settings);
+    }
+    return true;
+  }
+
+  const ok = await openCamera();
+  if (!ok) return;
+
+  scanning = true;
+  if (switchBtn) switchBtn.style.display = videoDevices.length > 1 ? 'inline-block' : 'none';
+  if (switchBtn) {
+    switchBtn.onclick = async () => {
+      deviceIndex++;
+      log('Switching camera...');
+      const success = await openCamera();
+      if (success) {
+        const track = scanStream.getVideoTracks()[0];
+        log(`📷 Switched camera${track ? ' (' + track.label + ')' : ''}. Scanning...`);
+      }
+    };
+  }
+
+  let framesChecked = 0;
+  let blackFrameWarned = false;
+  log('📷 Scanning... point camera at the other phone\'s QR code.');
+
+  function isFrameBlack(imageData) {
+    // Cheap heuristic: sample every 40th pixel: if they're all near-zero brightness, likely black
+    const data = imageData.data;
+    let sum = 0, count = 0;
+    for (let i = 0; i < data.length; i += 40 * 4) {
+      sum += data[i] + data[i + 1] + data[i + 2];
+      count++;
+    }
+    return count > 0 && (sum / count) < 5;
+  }
+
+  function tick() {
+    if (!scanning) return;
+    try {
+      if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        framesChecked++;
+        if (framesChecked === 30 && !blackFrameWarned && isFrameBlack(imageData)) {
+          blackFrameWarned = true;
+          log(`⚫ Camera feed looks black (${videoEl.videoWidth}x${videoEl.videoHeight}, "${scanStream.getVideoTracks()[0]?.label || 'unknown'}"). Try "Switch Camera" below.`);
+        }
+
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code) {
+          stopScanning(videoEl);
+          if (switchBtn) switchBtn.style.display = 'none';
+          // Use raw binaryData (actual bytes encoded in the QR), not the UTF-8-decoded
+          // .data string, since our payload is arbitrary gzip bytes, not text.
+          onResult(new Uint8Array(code.binaryData));
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('QR scan loop error:', err.name, err.message, err);
+      log(`❌ Scan error — ${err.name}: ${err.message}`);
+      stopScanning(videoEl);
+      return;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function stopScanning(videoEl) {
+  scanning = false;
+  if (scanStream) {
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+  videoEl.style.display = 'none';
+}
+
+// ---------- CALLER ----------
+document.getElementById('startCall').onclick = async () => {
+  document.getElementById('callerStep1').style.display = 'block';
+  log('Requesting microphone...');
+  setupPeerConnection();
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  const offerBytes = await encodeToBytes(pc.localDescription);
+  document.getElementById('localOfferText').value = toBackupText(pc.localDescription);
+  log(`Offer ready (${offerBytes.length} raw bytes in QR${(gzipToggle.checked && compressionSupported) ? ', gzip-compressed' : ', uncompressed'}).`);
+  try {
+    await renderQR('qrDisplayA', offerBytes);
+    log('Offer QR ready. Show it to Phone B.');
+  } catch (e) {
+    log('⚠️ Offer too large for QR — use the copy/paste text backup instead.');
+  }
+};
+
+document.getElementById('copyOffer').onclick = (e) => {
+  copyToClipboard(document.getElementById('localOfferText').value, e.target);
+};
+
+document.getElementById('scanAnswerBtn').onclick = () => {
+  scanQR(document.getElementById('videoA'), async (bytes) => {
+    log('Answer scanned. Connecting...');
+    await pc.setRemoteDescription(await decodeFromBytes(bytes));
+  }, document.getElementById('switchCamA'));
+};
+
+document.getElementById('submitAnswerText').onclick = async () => {
+  const text = document.getElementById('remoteAnswerText').value.trim();
+  if (!text) { log('Paste the answer text first.'); return; }
+  await pc.setRemoteDescription(await decodeFromBytes(await backupTextToBytes(text)));
+  log('Answer applied. Connecting...');
+};
+
+// ---------- ANSWERER ----------
+document.getElementById('joinCall').onclick = () => {
+  document.getElementById('answerStep1').style.display = 'block';
+  setupPeerConnection();
+  log('Ready. Scan Phone A\'s offer QR.');
+};
+
+document.getElementById('scanOfferBtn').onclick = () => {
+  scanQR(document.getElementById('videoB'), async (bytes) => {
+    log('Offer scanned. Requesting microphone...');
+    await pc.setRemoteDescription(await decodeFromBytes(bytes));
+    await generateAnswer();
+  }, document.getElementById('switchCamB'));
+};
+
+document.getElementById('submitOfferText').onclick = async () => {
+  const text = document.getElementById('remoteOfferText').value.trim();
+  if (!text) { log('Paste the offer text first.'); return; }
+  await pc.setRemoteDescription(await decodeFromBytes(await backupTextToBytes(text)));
+  await generateAnswer();
+};
+
+async function generateAnswer() {
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  const answerBytes = await encodeToBytes(pc.localDescription);
+  document.getElementById('answerStep2').style.display = 'block';
+  document.getElementById('localAnswerText').value = toBackupText(pc.localDescription);
+  log(`Answer ready (${answerBytes.length} raw bytes in QR${(gzipToggle.checked && compressionSupported) ? ', gzip-compressed' : ', uncompressed'}).`);
+  try {
+    await renderQR('qrDisplayB', answerBytes);
+    log('Answer QR ready. Show it back to Phone A.');
+  } catch (e) {
+    log('⚠️ Answer too large for QR — use the copy/paste text backup instead.');
+  }
+}
+
+document.getElementById('copyAnswer').onclick = (e) => {
+  copyToClipboard(document.getElementById('localAnswerText').value, e.target);
+};
+</script>
+
+</body>
+</html>
   <div id="qrDisplayA"></div>
   <details>
     <summary>Raw text (backup)</summary>
