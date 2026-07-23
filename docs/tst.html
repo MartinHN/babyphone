@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebRTC Manual Audio Call</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 1.3em; }
+  textarea { width: 100%; height: 100px; font-family: monospace; font-size: 12px; margin-top: 6px; }
+  button { padding: 8px 14px; margin: 6px 6px 6px 0; cursor: pointer; }
+  .step { border: 1px solid #ccc; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+  .status { font-weight: bold; }
+  label { display: block; margin-top: 10px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>🎙️ WebRTC Manual Audio Call (no server)</h1>
+<p>Open this file in two browser windows (same machine, or two machines on the same LAN).
+In Window A, click "Start Call". In Window B, click "Join Call". Copy/paste the text boxes between them as instructed.</p>
+
+<div class="step">
+  <button id="startCall">1. Start Call (Caller)</button>
+  <button id="joinCall">1. Join Call (Answerer)</button>
+  <p class="status" id="status">Idle. Click a button above to begin.</p>
+</div>
+
+<div class="step" id="offerBox" style="display:none;">
+  <label>Your Offer — copy this and send it to the other window:</label>
+  <textarea id="localOffer" readonly></textarea>
+
+  <label>Paste the other window's Answer here:</label>
+  <textarea id="remoteAnswer"></textarea>
+  <button id="submitAnswer">2. Connect</button>
+</div>
+
+<div class="step" id="answerBox" style="display:none;">
+  <label>Paste the Caller's Offer here:</label>
+  <textarea id="remoteOffer"></textarea>
+  <button id="submitOffer">2. Generate Answer</button>
+
+  <label>Your Answer — copy this and send it back to the Caller:</label>
+  <textarea id="localAnswer" readonly></textarea>
+</div>
+
+<div class="step">
+  <h3>Audio</h3>
+  <audio id="remoteAudio" autoplay controls></audio>
+</div>
+
+<script>
+const statusEl = document.getElementById('status');
+let pc;
+
+function log(msg) { statusEl.textContent = msg; console.log(msg); }
+
+async function waitForIceGathering(pc) {
+  if (pc.iceGatheringState === 'complete') return;
+  await new Promise(resolve => {
+    function check() {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    }
+    pc.addEventListener('icegatheringstatechange', check);
+  });
+}
+
+function setupPeerConnection() {
+  pc = new RTCPeerConnection();
+  pc.ontrack = (e) => {
+    document.getElementById('remoteAudio').srcObject = e.streams[0];
+    log('✅ Connected — audio should be playing.');
+  };
+  pc.onconnectionstatechange = () => {
+    log('Connection state: ' + pc.connectionState);
+  };
+  return pc;
+}
+
+async function getMic() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    log('❌ Microphone access denied or unavailable: ' + err.message);
+    throw err;
+  }
+}
+
+document.getElementById('startCall').onclick = async () => {
+  document.getElementById('offerBox').style.display = 'block';
+  log('Requesting microphone...');
+  setupPeerConnection();
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  document.getElementById('localOffer').value = JSON.stringify(pc.localDescription);
+  log('Offer ready. Copy it to the other window.');
+};
+
+document.getElementById('submitAnswer').onclick = async () => {
+  const answerText = document.getElementById('remoteAnswer').value.trim();
+  if (!answerText) { log('Paste the answer first.'); return; }
+  const answer = JSON.parse(answerText);
+  await pc.setRemoteDescription(answer);
+  log('Answer applied. Connecting...');
+};
+
+document.getElementById('joinCall').onclick = async () => {
+  document.getElementById('answerBox').style.display = 'block';
+  log('Ready. Paste the offer from the Caller window.');
+  setupPeerConnection();
+};
+
+document.getElementById('submitOffer').onclick = async () => {
+  const offerText = document.getElementById('remoteOffer').value.trim();
+  if (!offerText) { log('Paste the offer first.'); return; }
+  const offer = JSON.parse(offerText);
+  await pc.setRemoteDescription(offer);
+
+  log('Requesting microphone...');
+  const stream = await getMic();
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  log('Gathering ICE candidates...');
+  await waitForIceGathering(pc);
+
+  document.getElementById('localAnswer').value = JSON.stringify(pc.localDescription);
+  log('Answer ready. Copy it back to the Caller window.');
+};
+</script>
+
+</body>
+</html>
