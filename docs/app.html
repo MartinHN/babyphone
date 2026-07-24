@@ -2450,6 +2450,20 @@ async function handleOffer(sdp) {
     if (pc.connectionState === "connected") {
       connectBtn.classList.add("hidden");
       hidePicker();
+      stopConnectionLostAlert();
+      // Don't rely solely on the <audio> element's 'playing' event to restore
+      // the live UI — after an ICE-restart recovery (same track, same
+      // element, connectivity just resumes underneath it), the element's own
+      // playback state machine may never perceive an interruption at all, so
+      // 'playing' can simply never re-fire even though audio is flowing again.
+      // connectionState actually reaching "connected" is the reliable signal.
+      if (audioEl.srcObject) {
+        setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
+        setupMeter(audioEl.srcObject);
+        setMediaPlaybackState("playing");
+        showStatusNotification("live");
+        if (!statsWatchdogInterval) startStatsWatchdog();
+      }
     } else if (pc.connectionState === "disconnected") {
       // Transient — give the broadcaster's restartIce() a chance to recover this
       // same connection before we tear anything down.
@@ -2524,6 +2538,17 @@ async function handleManualOffer(bytes) {
       connectBtn.classList.add("hidden");
       document.getElementById("manualLsFlow").classList.add("hidden");
       stopConnectionLostAlert();
+      // Same reasoning as relay mode: don't rely solely on the <audio>
+      // element's 'playing' event, since an ICE-restart recovery may never
+      // trigger it if the element's own playback state machine never
+      // perceived an interruption in the first place.
+      if (audioEl.srcObject) {
+        setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
+        setupMeter(audioEl.srcObject);
+        setMediaPlaybackState("playing");
+        showStatusNotification("live");
+        if (!statsWatchdogInterval) startStatsWatchdog();
+      }
     } else if (manualLsPc.connectionState === "disconnected") {
       // Transient — the broadcaster's own onconnectionstatechange will attempt
       // restartIce() on its side; we just need to not tear down our audio/meter
