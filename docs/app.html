@@ -2132,6 +2132,7 @@ function startStatsWatchdog() {
             stopStatsWatchdog();
             stopManualHeartbeat();
             setMediaPlaybackState("none");
+            triggerConnectionLostAlert();
             return;
           }
           console.warn("Audio track stalled — forcing reconnect");
@@ -2447,6 +2448,7 @@ async function handleManualOffer(bytes) {
     if (manualLsPc.connectionState === "connected") {
       connectBtn.classList.add("hidden");
       document.getElementById("manualLsFlow").classList.add("hidden");
+      stopConnectionLostAlert();
     } else if (manualLsPc.connectionState === "disconnected") {
       // Transient — the broadcaster's own onconnectionstatechange will attempt
       // restartIce() on its side; we just need to not tear down our audio/meter
@@ -2459,6 +2461,7 @@ async function handleManualOffer(bytes) {
       setMediaPlaybackState("none");
       document.getElementById("remoteVideoEl").classList.add("hidden");
       connectBtn.classList.remove("hidden");
+      triggerConnectionLostAlert();
     }
   };
 
