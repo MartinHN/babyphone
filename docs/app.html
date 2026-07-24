@@ -98,6 +98,8 @@
         <label for="accessToken" style="white-space:nowrap; margin:0;">Access token:</label>
         <input type="text" id="accessToken" placeholder="printed in the server's console on startup" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
       </div>
+      <button id="openServerPageBtn" class="hidden" style="width:100%; margin-top:8px;">🔓 Open relay server page (accept certificate)</button>
+      <div id="openServerPageStatus" style="font-size:0.8rem; color:#666; margin-top:4px;"></div>
     </div>
 
     <details id="advancedDetails" style="margin-bottom:16px; text-align:left;">
@@ -220,9 +222,9 @@
     (address, token, STUN/TURN) are remembered in this browser once set — use
     <strong>🔗 Copy shareable link</strong> to bundle them into one URL you
     can send to other devices. The very first time on a new relay server,
-    open <code>https://&lt;that-address&gt;</code> directly in this browser
-    once and accept the certificate warning, or connections will fail
-    silently.</p>
+    tap <strong>🔓 Open relay server page</strong> above and accept the
+    certificate warning there — self-signed certs need that once per
+    browser, or connections will fail silently.</p>
   </div>
 
   <!-- ===================== Mode picker ===================== -->
@@ -495,6 +497,36 @@ shareLinkBtn.addEventListener("click", async () => {
   } catch {
     shareLinkStatus.textContent = url.toString(); // clipboard blocked — show it to copy manually
   }
+});
+
+const openServerPageBtn = document.getElementById("openServerPageBtn");
+const openServerPageStatus = document.getElementById("openServerPageStatus");
+
+// Shown only when there's actually a reason to suspect an unaccepted
+// self-signed cert — i.e. the WebSocket just failed with an address entered —
+// rather than always-on clutter for people who don't need it.
+function maybeShowOpenServerPageBtn() {
+  if (serverAddrInput.value.trim()) openServerPageBtn.classList.remove("hidden");
+}
+function hideOpenServerPageBtn() {
+  openServerPageBtn.classList.add("hidden");
+  openServerPageStatus.textContent = "";
+}
+serverAddrInput.addEventListener("input", () => {
+  if (!serverAddrInput.value.trim()) hideOpenServerPageBtn();
+});
+
+openServerPageBtn.addEventListener("click", () => {
+  const addr = serverAddrInput.value.trim();
+  if (!addr) {
+    openServerPageStatus.textContent = "Enter the relay server address above first.";
+    return;
+  }
+  // Self-signed certs need accepting once per browser before WebSocket
+  // connections to the same host will work — opening the page directly is
+  // how that "Advanced -> Proceed" warning actually gets triggered.
+  window.open(`https://${addr}/`, "_blank", "noopener,noreferrer");
+  openServerPageStatus.textContent = "Opened in a new tab — accept the certificate warning there (Advanced → Proceed), then come back here.";
 });
 
 // ============================================================
@@ -1290,6 +1322,7 @@ function bcConnectSignaling(addr) {
 
   bcWs.onopen = () => {
     bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name }));
+    hideOpenServerPageBtn();
   };
 
   bcWs.onmessage = async (event) => {
@@ -1323,6 +1356,7 @@ function bcConnectSignaling(addr) {
 
   bcWs.onclose = () => {
     if (bcLocalStream) bcSetStatus("Signaling server disconnected", "error");
+    maybeShowOpenServerPageBtn();
   };
 }
 
@@ -2295,6 +2329,7 @@ function openSocket() {
     ws.send(JSON.stringify({ type: "register", role: "listener" }));
     setStatus("Connected to server. Waiting for broadcaster list...", "");
     startHeartbeat();
+    hideOpenServerPageBtn();
   };
 
   ws.onmessage = async (event) => {
@@ -2341,6 +2376,7 @@ function openSocket() {
 
   ws.onclose = () => {
     stopHeartbeat();
+    maybeShowOpenServerPageBtn();
     if (shouldStayConnected) scheduleReconnect(false);
   };
   ws.onerror = () => ws.close();
