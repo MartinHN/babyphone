@@ -2167,15 +2167,24 @@ function startStatsWatchdog() {
       if (bytesReceived === lastBytesReceived) {
         staleStatsCount++;
         if (staleStatsCount >= 2) {
+          // Flat audio bytes alone isn't proof the connection is dead — it's also
+          // exactly what legitimate silence (e.g. VOX gating the broadcaster's
+          // mic during a quiet room) looks like. Each mode has its own
+          // independent liveness signal that doesn't depend on audio actually
+          // flowing — manual mode's data-channel ping/pong, relay mode's own
+          // WS-level ping/pong (already used elsewhere to detect a dead
+          // signaling socket) — and we only treat this as a genuine stall if
+          // that signal has ALSO gone quiet.
+          const heartbeatStale = signalingMethod === "manual"
+            ? isManualHeartbeatStale()
+            : (Date.now() - lastPongAt > HEARTBEAT_TIMEOUT_MS);
+
+          if (!heartbeatStale) {
+            staleStatsCount = 0;
+            return;
+          }
+
           if (signalingMethod === "manual") {
-            // Flat audio bytes alone isn't proof the connection is dead — it's also
-            // exactly what legitimate silence (e.g. an audio gate) looks like. Our
-            // independent liveness signal here is the data-channel ping/pong;
-            // only treat this as a real stall if that's ALSO gone quiet.
-            if (!isManualHeartbeatStale()) {
-              staleStatsCount = 0;
-              return;
-            }
             console.warn("Manual mode: audio stalled and heartbeat stale — connection appears lost");
             staleStatsCount = 0;
             setStatus("⚠️ Connection appears lost — ask the broadcaster to restart and scan a new QR", "error");
@@ -2186,7 +2195,7 @@ function startStatsWatchdog() {
             triggerConnectionLostAlert();
             return;
           }
-          console.warn("Audio track stalled — forcing reconnect");
+          console.warn("Audio track stalled and heartbeat stale — forcing reconnect");
           staleStatsCount = 0;
           scheduleReconnect(true);
         }
