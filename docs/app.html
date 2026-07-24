@@ -59,6 +59,9 @@
   #burgerBtn { font-size: 1.4rem; padding: 6px 12px; border: 1px solid #ccc; background: white; line-height: 1; }
   #settingsOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; }
   #settingsMenu { position: fixed; top: 0; right: 0; height: 100%; width: 85%; max-width: 360px; background: white; box-shadow: -4px 0 16px rgba(0,0,0,0.15); z-index: 101; padding: 20px; overflow-y: auto; box-sizing: border-box; text-align: left; }
+  #helpModal { position: fixed; top: 0; right: 0; height: 100%; width: 85%; max-width: 360px; background: white; box-shadow: -4px 0 16px rgba(0,0,0,0.15); z-index: 101; padding: 20px; overflow-y: auto; box-sizing: border-box; text-align: left; }
+  #helpModal p { font-size: 0.85rem; color: #444; line-height: 1.5; margin: 0 0 4px 0; }
+  #helpModal code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; }
   #closeSettingsBtn { font-size: 1.1rem; padding: 4px 10px; border: none; background: none; cursor: pointer; }
   .settings-heading { font-size: 0.95rem; color: #16a34a; border-top: 1px solid #eee; padding-top: 16px; margin: 20px 0 12px 0; }
   .settings-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
@@ -141,6 +144,79 @@
 
     <h2 class="settings-heading">App</h2>
     <button id="installBtn" style="width:100%;">Install App</button>
+    <button id="helpBtn" style="width:100%; margin-top:8px;">❓ Help</button>
+  </div>
+
+  <div id="helpModal" class="hidden">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <strong style="font-size:1.05rem;">Help</strong>
+      <button id="closeHelpBtn" aria-label="Close">✕</button>
+    </div>
+
+    <h2 class="settings-heading">Connecting: two methods</h2>
+    <p><strong>Manual (QR code)</strong> — the default. No server needed at all:
+    the broadcaster shows a QR code, the listener scans it (or pastes the text
+    backup if scanning fails), then shows an answer QR back. Once that
+    exchange completes, everything else — push-to-talk, video requests, VOX
+    settings, even recovering from a brief network change — happens
+    automatically without another QR scan.</p>
+    <p><strong>Relay server</strong> — needs a signaling server running
+    somewhere reachable by both devices (address entered above). Broadcasters
+    auto-register and listeners pick one from a list, with automatic
+    reconnection if the connection drops. Useful if you don't want to scan a
+    QR each time, or want to reach someone without meeting up with a phone
+    first.</p>
+
+    <h2 class="settings-heading">Reaching people outside your network</h2>
+    <p>Neither method alone gets through most mobile carriers' NAT. For that
+    you need a <strong>TURN server</strong> — add one under Advanced (STUN/TURN)
+    above. Free option: the Open Relay Project (metered.ca), 20GB/month free.
+    For full control, self-host <code>coturn</code> on a cheap VPS. TURN works
+    with both connection methods above — it's independent of which one you
+    pick.</p>
+
+    <h2 class="settings-heading">Push-to-talk</h2>
+    <p>Once connected, listeners get a "Hold to Talk" button to speak back to
+    the broadcaster. Nothing is sent while it's not pressed — not just muted,
+    genuinely no audio data leaves your device until you press it.</p>
+
+    <h2 class="settings-heading">Voice-activated sending (VOX)</h2>
+    <p>Optional, and controlled from this menu (Audio section) rather than by
+    the broadcaster: when enabled, the broadcaster's mic only actually
+    transmits while it detects sound above your chosen sensitivity, saving
+    bandwidth during quiet periods. Your preference is saved on this device
+    and sent to the broadcaster automatically each time you connect.</p>
+
+    <h2 class="settings-heading">Video on demand</h2>
+    <p>Manual (QR) mode only, for now. Listeners get a "Show Video" button
+    with a resolution picker (Low/Medium/High). The broadcaster's camera only
+    turns on when requested — genuinely powered off otherwise, not just
+    hidden — and resolution can be changed live without interrupting the
+    call.</p>
+
+    <h2 class="settings-heading">Keeping it connected in the background</h2>
+    <p>For best reliability, install this as an app ("Add to Home Screen" /
+    the Install button above). In relay mode, allow
+    <strong>notification permission</strong> when asked — that's what puts a
+    persistent "Mic Stream" notification with a Stop button in your
+    notification shade while connected. Android Chrome generally keeps audio
+    playing when you switch apps or lock the screen; iOS Safari is much more
+    restrictive about background web audio, so keeping the screen awake
+    (toggle above) is the most reliable way to avoid interruptions there —
+    this matters for manual/QR mode too, since a backgrounded or closed tab
+    means starting the QR exchange over again next time.</p>
+
+    <h2 class="settings-heading">Relay server address</h2>
+    <p>The host:port your signaling server prints on startup (e.g.
+    <code>192.168.1.42:3000</code>) — any device on the LAN can run it. If
+    you're opening this page directly from that server it's filled in
+    automatically; otherwise enter it manually. All the fields above
+    (address, STUN/TURN) are remembered in this browser once set — use
+    <strong>🔗 Copy shareable link</strong> to bundle them into one URL you
+    can send to other devices. The very first time on a new relay server,
+    open <code>https://&lt;that-address&gt;</code> directly in this browser
+    once and accept the certificate warning, or connections will fail
+    silently.</p>
   </div>
 
   <!-- ===================== Mode picker ===================== -->
@@ -245,34 +321,8 @@
       <div id="meterLabel"><span id="meterDb">-∞ dB</span><span id="meterPeakLabel">peak: -∞ dB</span></div>
       <canvas id="meterCanvas"></canvas>
     </div>
-
-    <p id="note">
-      For best background reliability, install this as an app (button above, or
-      "Add to Home Screen"/"Share → Add to Home Screen"). When you tap
-      "Connect" you'll be asked for <strong>notification permission</strong>
-      — allow it, since that's what puts a persistent "Mic Stream" notification
-      with a Stop button in your notification shade while connected. Android
-      Chrome generally keeps audio playing when you switch apps or lock the
-      screen. iOS Safari is much more restrictive about background web audio —
-      keeping the screen awake (toggle above) is the most reliable way to avoid
-      interruptions there.
-    </p>
   </div>
 
-  <p id="addrNote" style="margin-top:28px; font-size:0.8rem; color:#777; line-height:1.4; text-align:left;">
-    <strong>Relay server address</strong> is the host:port your signaling
-    server prints on startup (e.g. <code>192.168.1.42:3000</code>) — any
-    device on the LAN can run it. If you're opening this page directly from
-    that server it's filled in automatically; if you're using a version
-    hosted elsewhere (like GitHub Pages), enter it manually. All the fields
-    above (address, STUN/TURN) are remembered in this browser once set —
-    use <strong>🔗 Copy shareable link</strong> to bundle them into one URL
-    you can send to other devices; opening it caches everything and cleans
-    the values out of the visible address bar automatically. The very first
-    time on a new relay server, open <code>https://&lt;that-address&gt;</code>
-    directly in this browser once and accept the certificate warning, or
-    connections below will fail silently.
-  </p>
 
 <script>
 // ============================================================
@@ -285,18 +335,33 @@ const burgerBtn = document.getElementById("burgerBtn");
 const settingsMenu = document.getElementById("settingsMenu");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const helpModal = document.getElementById("helpModal");
+const helpBtn = document.getElementById("helpBtn");
+const closeHelpBtn = document.getElementById("closeHelpBtn");
 
+function closeAllPanels() {
+  settingsMenu.classList.add("hidden");
+  helpModal.classList.add("hidden");
+  settingsOverlay.classList.add("hidden");
+}
 function openSettings() {
+  helpModal.classList.add("hidden");
   settingsMenu.classList.remove("hidden");
   settingsOverlay.classList.remove("hidden");
 }
 function closeSettings() {
+  closeAllPanels();
+}
+function openHelp() {
   settingsMenu.classList.add("hidden");
-  settingsOverlay.classList.add("hidden");
+  helpModal.classList.remove("hidden");
+  settingsOverlay.classList.remove("hidden");
 }
 burgerBtn.addEventListener("click", openSettings);
-closeSettingsBtn.addEventListener("click", closeSettings);
-settingsOverlay.addEventListener("click", closeSettings);
+closeSettingsBtn.addEventListener("click", closeAllPanels);
+settingsOverlay.addEventListener("click", closeAllPanels);
+helpBtn.addEventListener("click", openHelp);
+closeHelpBtn.addEventListener("click", closeAllPanels);
 
 const serverAddrInput = document.getElementById("serverAddr");
 const stunUrlsInput = document.getElementById("stunUrls");
