@@ -570,6 +570,9 @@ function changeMode() {
   if (mode === "broadcast") bcStop();
   else if (mode === "listen") disconnect();
   mode = null;
+  localStorage.removeItem(LAST_SESSION_KEYS.mode);
+  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterId);
+  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterName);
   broadcastSection.style.display = "none";
   listenSection.style.display = "none";
   changeModeBtn.style.display = "none";
@@ -2241,9 +2244,18 @@ function renderBroadcasterList(list) {
 function showPicker() { pickerWrap.style.display = "block"; }
 function hidePicker() { pickerWrap.style.display = "none"; }
 
+const LAST_SESSION_KEYS = {
+  mode: "micStreamLastMode",
+  broadcasterId: "micStreamLastBroadcasterId",
+  broadcasterName: "micStreamLastBroadcasterName",
+};
+
 function chooseBroadcaster(id, name) {
   selectedBroadcasterId = id;
   selectedBroadcasterName = name;
+  localStorage.setItem(LAST_SESSION_KEYS.mode, "listen");
+  localStorage.setItem(LAST_SESSION_KEYS.broadcasterId, id);
+  localStorage.setItem(LAST_SESSION_KEYS.broadcasterName, name);
   hidePicker();
   setStatus(`Connecting to "${name}"...`, "");
   ws.send(JSON.stringify({ type: "listen", broadcasterId: id }));
@@ -2602,6 +2614,30 @@ if ("serviceWorker" in navigator) {
     });
   });
 }
+
+// ---------- Auto-resume a genuinely-interrupted relay-mode listener session ----------
+// If the page reloads mid-session (some Android PWAs get reloaded by the OS
+// after a network change/suspend, outside our own JS control — a real
+// navigation, not a WebSocket-level reconnect) you'd otherwise land back on
+// the bare mode picker with no obvious sign anything was ever connected.
+// chooseBroadcaster() persists mode+broadcaster; changeMode() clears it on an
+// explicit, intentional exit — so anything still here on load means the
+// session was cut short unexpectedly, not deliberately ended.
+(function autoResumeSession() {
+  if (signalingMethod !== "relay") return; // manual/QR mode can't auto-resume without a fresh QR anyway
+  const lastMode = localStorage.getItem(LAST_SESSION_KEYS.mode);
+  const lastBroadcasterId = localStorage.getItem(LAST_SESSION_KEYS.broadcasterId);
+  const lastBroadcasterName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+  if (lastMode !== "listen" || !lastBroadcasterId) return;
+  if (!getServerAddress()) return; // nothing to reconnect to without an address
+
+  selectMode("listen");
+  selectedBroadcasterId = lastBroadcasterId;
+  selectedBroadcasterName = lastBroadcasterName;
+  setStatus(`Resuming session with "${lastBroadcasterName}"...`, "reconnecting");
+  connect();
+})();
+
 </script>
 </body>
 </html>
