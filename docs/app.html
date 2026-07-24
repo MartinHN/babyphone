@@ -176,7 +176,7 @@
     <h2 class="settings-heading">Reaching people outside your network</h2>
     <p>Neither method alone gets through most mobile carriers' NAT. For that
     you need a <strong>TURN server</strong> — add one under Advanced (STUN/TURN)
-    above. Free option: the Open Relay Project (metered.ca), 20GB/month free.
+    above. Free option: the Open Relay Project (metered.ca), 500MB/month free.
     For full control, self-host <code>coturn</code> on a cheap VPS. TURN works
     with both connection methods above — it's independent of which one you
     pick.</p>
@@ -1269,6 +1269,25 @@ function bcUpdateListenerCount() {
   listenersEl.textContent = n === 0 ? "No listeners connected yet" : `${n} listener(s) connected`;
 }
 
+// Proactively requests (then immediately releases) camera permission right
+// at broadcast start — a genuine user gesture (tapping "Start Broadcasting").
+// Video-on-demand later calls getUserMedia() again from inside a remote
+// data-channel message handler, which isn't a local user gesture at all;
+// some browsers block or silently fail a first-time permission prompt in
+// that context. Priming it here means that later call just succeeds against
+// an already-granted permission instead. Deliberately NOT awaited by the
+// caller and fully self-contained in its own try/catch — if it's denied, or
+// there's no camera, video-on-demand will simply keep failing gracefully
+// later (already handled there), but the core audio broadcast is completely
+// unaffected either way.
+function primeVideoPermission() {
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+    .catch((err) => {
+      console.warn("Video permission not granted at broadcast start — video-on-demand may fail later:", err.name, err.message);
+    });
+}
+
 async function bcStart() {
   const addr = getServerAddress();
   if (!addr) {
@@ -1286,6 +1305,7 @@ async function bcStart() {
     deviceNameInput.disabled = false;
     return;
   }
+  primeVideoPermission();
 
   bcSetStatus("Mic captured. Waiting for listeners...", "live");
   bcStartBtn.textContent = "Stop Broadcasting";
@@ -1530,6 +1550,7 @@ async function bcStartManual() {
     deviceNameInput.disabled = false;
     return;
   }
+  primeVideoPermission();
 
   bcSetStatus("Mic captured. Generating offer (this can take a few seconds)...", "live");
   bcStartBtn.textContent = "Stop Broadcasting";
