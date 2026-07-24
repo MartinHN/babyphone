@@ -1308,6 +1308,7 @@ async function bcStart() {
   primeVideoPermission();
 
   bcSetStatus("Mic captured. Waiting for listeners...", "live");
+  showStatusNotification("sending")
   bcStartBtn.textContent = "Stop Broadcasting";
   bcStartBtn.disabled = false;
   bcConnectSignaling(addr);
@@ -2113,6 +2114,7 @@ async function showStatusNotification(state, opts = {}) {
   const texts = {
     connecting: { title: "Mic Stream — connecting...", body: selectedBroadcasterName ? `Connecting to "${selectedBroadcasterName}"` : "Looking for a broadcaster on the LAN" },
     live: { title: "🔊 Mic Stream — live", body: `Receiving audio from "${selectedBroadcasterName}"` },
+    sending: { title: "🔊 Mic Stream — live", body: `Sending audio to any listener` },
     reconnecting: { title: "⚠️ Mic Stream — connection lost", body: `Trying to reconnect to "${selectedBroadcasterName}"...` },
   };
   const t = texts[state];
