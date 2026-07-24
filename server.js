@@ -26,6 +26,7 @@ const { WebSocketServer } = require("ws");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const selfsigned = require("selfsigned");
 
 const TRUST_PROXY = process.env.TRUST_PROXY === "1";
@@ -33,6 +34,23 @@ const TRUST_PROXY = process.env.TRUST_PROXY === "1";
 const CERT_DIR = path.join(__dirname, "certs");
 const KEY_PATH = path.join(CERT_DIR, "key.pem");
 const CERT_PATH = path.join(CERT_DIR, "cert.pem");
+const TOKEN_PATH = path.join(CERT_DIR, "access-token.txt");
+
+// Anyone who can reach this server can broadcast or listen — there's no other
+// access control. This token is the gate: every WebSocket connection must
+// present it (as a query param) or gets rejected before any message is
+// processed. Set ACCESS_TOKEN yourself to pin a stable value across restarts
+// (e.g. in a systemd unit or docker-compose env); otherwise one is generated
+// once and persisted alongside the TLS cert, so it survives restarts too.
+function ensureAccessToken() {
+  if (process.env.ACCESS_TOKEN) return process.env.ACCESS_TOKEN;
+  if (fs.existsSync(TOKEN_PATH)) return fs.readFileSync(TOKEN_PATH, "utf8").trim();
+  const token = crypto.randomBytes(16).toString("hex");
+  fs.mkdirSync(CERT_DIR, { recursive: true });
+  fs.writeFileSync(TOKEN_PATH, token);
+  return token;
+}
+const ACCESS_TOKEN = ensureAccessToken();
 
 function getLanAddresses() {
   const nets = os.networkInterfaces();
@@ -104,7 +122,13 @@ function pushBroadcasterListToAllListeners() {
   }
 }
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
+  const reqUrl = new URL(req.url, "http://localhost"); // base is irrelevant, just need query parsing
+  if (reqUrl.searchParams.get("token") !== ACCESS_TOKEN) {
+    ws.close(4001, "Unauthorized");
+    return;
+  }
+
   let role = null;
   let id = null;
   ws.isAlive = true;
@@ -220,25 +244,26 @@ setInterval(() => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`\nMic Stream server running on port ${PORT} (${TRUST_PROXY ? "HTTP, behind proxy" : "HTTPS, self-signed"})`);
+  console.log(`Access token: ${ACCESS_TOKEN}`);
 
   if (TRUST_PROXY) {
     console.log(`Running in internet/proxy mode. Make sure whatever sits in front of this`);
     console.log(`(reverse proxy or PaaS) terminates real HTTPS and forwards here on port ${PORT}.`);
-    console.log(`Open: https://<your-public-domain>/app.html (pick Broadcast or Listen in-app)`);
+    console.log(`Open: https://<your-public-domain>/app.html?token=${ACCESS_TOKEN} (pick Broadcast or Listen in-app)`);
   } else {
     const addrs = getLanAddresses();
     const host = addrs[0] || "<this-device-lan-ip>";
-    console.log(`Open: https://${host}:${PORT}/app.html (pick Broadcast or Listen in-app)`);
+    console.log(`Open: https://${host}:${PORT}/app.html?token=${ACCESS_TOKEN} (pick Broadcast or Listen in-app)`);
     console.log(`\nYour browser will warn about an untrusted certificate the first`);
     console.log(`time — that's expected for a self-signed cert. Tap "Advanced" ->`);
     console.log(`"Proceed" (or equivalent) to continue. You only need to do this once`);
     console.log(`per browser.`);
   }
 
-  if (TRUST_PROXY) {
-    console.log(`\nWARNING: no access control at the server level in this mode — anyone`);
-    console.log(`who finds this URL can broadcast or listen. Share links deliberately;`);
-    console.log(`see app.html's "Copy shareable link" for baking in a private config.`);
-  }
+  console.log(`\nThe token above is required on every connection — anyone without it is`);
+  console.log(`rejected before any signaling happens. It's generated once and persisted in`);
+  console.log(`${TOKEN_PATH} (survives restarts); set ACCESS_TOKEN yourself to pin a specific`);
+  console.log(`value instead. Share the URL above (with ?token=...) — app.html's "Copy`);
+  console.log(`shareable link" bakes it in the same way it does the server address.`);
   console.log("");
 });

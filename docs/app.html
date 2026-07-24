@@ -94,6 +94,10 @@
         <label for="serverAddr" style="white-space:nowrap; margin:0;">Relay server address:</label>
         <input type="text" id="serverAddr" placeholder="192.168.1.42:3000" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
       </div>
+      <div class="field-row" style="display:flex; align-items:center; gap:8px; text-align:left; margin-top:8px;">
+        <label for="accessToken" style="white-space:nowrap; margin:0;">Access token:</label>
+        <input type="text" id="accessToken" placeholder="printed in the server's console on startup" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+      </div>
     </div>
 
     <details id="advancedDetails" style="margin-bottom:16px; text-align:left;">
@@ -210,8 +214,10 @@
     <p>The host:port your signaling server prints on startup (e.g.
     <code>192.168.1.42:3000</code>) — any device on the LAN can run it. If
     you're opening this page directly from that server it's filled in
-    automatically; otherwise enter it manually. All the fields above
-    (address, STUN/TURN) are remembered in this browser once set — use
+    automatically; otherwise enter it manually. The server also prints an
+    <strong>access token</strong> on startup — every connection needs it, or
+    it's rejected before any signaling happens. All the fields above
+    (address, token, STUN/TURN) are remembered in this browser once set — use
     <strong>🔗 Copy shareable link</strong> to bundle them into one URL you
     can send to other devices. The very first time on a new relay server,
     open <code>https://&lt;that-address&gt;</code> directly in this browser
@@ -364,6 +370,7 @@ helpBtn.addEventListener("click", openHelp);
 closeHelpBtn.addEventListener("click", closeAllPanels);
 
 const serverAddrInput = document.getElementById("serverAddr");
+const accessTokenInput = document.getElementById("accessToken");
 const stunUrlsInput = document.getElementById("stunUrls");
 const turnUrlsInput = document.getElementById("turnUrls");
 const turnUsernameInput = document.getElementById("turnUsername");
@@ -382,6 +389,7 @@ let mode = null; // null | "broadcast" | "listen"
 // never needs it again. No server-side secrets/env vars involved at all. ----------
 const FIELD_KEYS = {
   addr: ["serverAddr", "micStreamServerAddress"],
+  token: ["accessToken", "micStreamAccessToken"],
   stun: ["stunUrls", "micStreamStunUrls"],
   turn: ["turnUrls", "micStreamTurnUrls"],
   turnUser: ["turnUsername", "micStreamTurnUsername"],
@@ -389,6 +397,7 @@ const FIELD_KEYS = {
 };
 const fieldEls = {
   serverAddr: serverAddrInput,
+  accessToken: accessTokenInput,
   stunUrls: stunUrlsInput,
   turnUrls: turnUrlsInput,
   turnUsername: turnUsernameInput,
@@ -434,6 +443,12 @@ function getServerAddress() {
   return addr;
 }
 
+function getAccessToken() {
+  const token = accessTokenInput.value.trim();
+  if (token) localStorage.setItem(FIELD_KEYS.token[1], token);
+  return token;
+}
+
 // ICE servers built entirely client-side from the fields above — no server
 // round-trip, no server-held secret.
 function buildIceServers() {
@@ -468,6 +483,7 @@ let iceServers = buildIceServers();
 shareLinkBtn.addEventListener("click", async () => {
   const url = new URL(location.origin + location.pathname);
   if (serverAddrInput.value.trim()) url.searchParams.set("addr", serverAddrInput.value.trim());
+  if (accessTokenInput.value.trim()) url.searchParams.set("token", accessTokenInput.value.trim());
   if (stunUrlsInput.value.trim()) url.searchParams.set("stun", stunUrlsInput.value.trim());
   if (turnUrlsInput.value.trim()) url.searchParams.set("turn", turnUrlsInput.value.trim());
   if (turnUsernameInput.value.trim()) url.searchParams.set("turnUser", turnUsernameInput.value.trim());
@@ -1268,7 +1284,8 @@ function bcStop() {
 }
 
 function bcConnectSignaling(addr) {
-  bcWs = new WebSocket(`wss://${addr}`);
+  const token = getAccessToken();
+  bcWs = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
   const name = deviceNameInput.value.trim() || defaultDeviceName();
 
   bcWs.onopen = () => {
@@ -2271,7 +2288,8 @@ function openSocket() {
     connectBtn.disabled = false;
     return;
   }
-  ws = new WebSocket(`wss://${addr}`);
+  const token = getAccessToken();
+  ws = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: "register", role: "listener" }));
