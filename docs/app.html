@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="MicStream" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js" integrity="sha512-DSzvYfxJWRi3E6vfcGQfL5CqOlApxYrrdqRP3hRCnoiZ0oM6+ccYjbtdzQFUrAOI/ehKk0VKFuKs5GseGPkVjQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
@@ -1308,7 +1309,7 @@ async function bcStart() {
   primeVideoPermission();
 
   bcSetStatus("Mic captured. Waiting for listeners...", "live");
-  showStatusNotification("sending")
+  showStatusNotification("sending");
   bcStartBtn.textContent = "Stop Broadcasting";
   bcStartBtn.disabled = false;
   bcConnectSignaling(addr);
@@ -1554,6 +1555,7 @@ async function bcStartManual() {
   primeVideoPermission();
 
   bcSetStatus("Mic captured. Generating offer (this can take a few seconds)...", "live");
+  showStatusNotification("sending");
   bcStartBtn.textContent = "Stop Broadcasting";
   bcStartBtn.disabled = false;
   listenersEl.textContent = "No listeners connected yet";
@@ -1657,6 +1659,7 @@ document.getElementById("manualBcPasteBtn").addEventListener("click", async () =
 
 bcStartBtn.addEventListener("click", () => {
   if (bcLocalStream) { bcStop(); return; }
+  requestWakeLock();
   if (signalingMethod === "manual") bcStartManual();
   else bcStart();
 });
@@ -1972,21 +1975,16 @@ audioEl.addEventListener("pause", () => {
   setMediaPlaybackState("paused");
 });
 
+var noSleep = new NoSleep();
 async function requestWakeLock() {
-  if (!wakeToggle.checked || !("wakeLock" in navigator)) return;
-  try {
-    wakeLock = await navigator.wakeLock.request("screen");
-    wakeLock.addEventListener("release", () => { wakeLock = null; });
-  } catch (err) {
-    console.warn("Wake lock failed:", err.message);
-  }
+  if (!wakeToggle.checked) return;
+  noSleep.enable();
+  return;
+
 }
 
 async function releaseWakeLock() {
-  if (wakeLock) {
-    try { await wakeLock.release(); } catch {}
-    wakeLock = null;
-  }
+  noSleep.disable();
 }
 
 document.addEventListener("visibilitychange", () => {
