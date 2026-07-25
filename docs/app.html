@@ -1964,10 +1964,35 @@ function setMediaPlaybackState(state) {
 let hasAlertedThisDrop = false;
 let alertLoopInterval = null;
 
+// Created once, during a genuine user gesture (tapping Connect / Join Call),
+// and reused for every alert tone thereafter. Creating a *fresh* AudioContext
+// from inside playAlertTone() itself is the bug this avoids: that call
+// happens from an async connectionstatechange event, not a direct user
+// gesture, and browsers can silently start such a context "suspended" — no
+// error thrown, the alarm just never actually makes a sound. A context
+// created/resumed during a real click is reliably unblocked, and stays that
+// way for later use even from async events.
+let alertAudioCtx = null;
+
+function ensureAlertAudioContext() {
+  try {
+    if (!alertAudioCtx) {
+      alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (alertAudioCtx.state === "suspended") {
+      alertAudioCtx.resume().catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Could not prepare alert audio context:", err.message);
+  }
+}
+
 function playAlertTone() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
+    if (!alertAudioCtx) ensureAlertAudioContext();
+    const ctx = alertAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
     const now = ctx.currentTime;
     [880, 660].forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -1983,7 +2008,6 @@ function playAlertTone() {
       osc.start(start);
       osc.stop(start + 0.2);
     });
-    setTimeout(() => ctx.close().catch(() => {}), 600);
   } catch (err) {
     console.warn("Alert tone failed:", err.message);
   }
@@ -2340,6 +2364,7 @@ function connect() {
   reconnectAttempt = 0;
   connectBtn.disabled = true;
   setStatus("Connecting...", "");
+  ensureAlertAudioContext();
   requestWakeLock();
   iceServers = buildIceServers();
   ensureNotificationPermission().then((granted) => {
@@ -2427,24 +2452,25 @@ function openSocket() {
       if (selectedBroadcasterId && msg.broadcasters.some((b) => b.id === selectedBroadcasterId)) {
         ws.send(JSON.stringify({ type: "listen", broadcasterId: selectedBroadcasterId }));
         setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
+      } else if (selectedBroadcasterId) {
+        // Still waiting for the broadcaster we're locked onto to reappear —
+        // don't clear the selection or force the picker open. That's an
+        // explicit user action (Change mode → Listen again), not something
+        // a transient absence from one list update should decide for them.
+        setStatus(`Waiting for "${selectedBroadcasterName}" to come back...`, "reconnecting");
       } else {
-        if (selectedBroadcasterId) {
-          selectedBroadcasterId = null;
-          setStatus("Broadcaster no longer available — choose another", "error");
-        } else {
-          setStatus("Choose a broadcaster below", "");
-        }
+        setStatus("Choose a broadcaster below", "");
         renderBroadcasterList(msg.broadcasters);
         showPicker();
       }
     } else if (msg.type === "broadcaster-gone" && msg.id === selectedBroadcasterId) {
-      selectedBroadcasterId = null;
       if (lsPc) { lsPc.close(); lsPc = null; }
       teardownMeter();
       stopStatsWatchdog();
       setMediaPlaybackState("none");
-      setStatus(`"${selectedBroadcasterName}" disconnected — choose another`, "error");
-      showPicker();
+      // Same reasoning as above — stay locked onto this broadcaster and keep
+      // waiting rather than bouncing back to the picker automatically.
+      setStatus(`"${selectedBroadcasterName}" disconnected — waiting for it to come back...`, "error");
       ws.send(JSON.stringify({ type: "list-broadcasters" }));
     } else if (msg.type === "offer") {
       await handleIncomingOffer({ type: "offer", sdp: msg.sdp });
@@ -2552,6 +2578,7 @@ function startManualListen() {
   document.getElementById("manualLsFlow").classList.remove("hidden");
   document.getElementById("manualLsOfferStep").classList.remove("hidden");
   document.getElementById("manualLsAnswerStep").classList.add("hidden");
+  ensureAlertAudioContext();
   requestWakeLock();
   iceServers = buildIceServers();
   ensureNotificationPermission().then((granted) => {
