@@ -1312,6 +1312,22 @@ async function bcCaptureMicAndPrepare() {
   return true;
 }
 
+let bcShouldStayConnected = false;
+let bcReconnectAttempt = 0;
+let bcReconnectTimer = null;
+let bcLastAddr = null;
+
+function bcScheduleReconnect(immediate) {
+  if (!bcShouldStayConnected) return;
+  clearTimeout(bcReconnectTimer);
+  const delay = immediate ? 250 : Math.min(500 * 2 ** bcReconnectAttempt, 5000);
+  bcReconnectAttempt++;
+  bcSetStatus(`Signaling server disconnected — reconnecting in ${Math.round(delay / 1000)}s...`, "error");
+  bcReconnectTimer = setTimeout(() => {
+    if (bcShouldStayConnected && bcLastAddr) bcConnectSignaling(bcLastAddr);
+  }, delay);
+}
+
 async function bcStart() {
   const addr = getServerAddress();
   if (!addr) {
@@ -1320,10 +1336,14 @@ async function bcStart() {
   }
   if (!(await bcCaptureMicAndPrepare())) return;
   bcSetStatus("Mic captured. Waiting for listeners...", "live");
+  bcShouldStayConnected = true;
+  bcReconnectAttempt = 0;
   bcConnectSignaling(addr);
 }
 
 function bcStop() {
+  bcShouldStayConnected = false;
+  clearTimeout(bcReconnectTimer);
   if (bcWs) { bcWs.close(); bcWs = null; }
   bcPeers.forEach((pc) => pc.close());
   bcPeers.clear();
@@ -1351,11 +1371,14 @@ function bcStop() {
 }
 
 function bcConnectSignaling(addr) {
+  bcLastAddr = addr;
   const token = getAccessToken();
   bcWs = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
   const name = deviceNameInput.value.trim() || defaultDeviceName();
 
   bcWs.onopen = () => {
+    if (bcReconnectAttempt > 0) bcSetStatus("Reconnected to signaling server", "live");
+    bcReconnectAttempt = 0;
     bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name }));
     hideOpenServerPageBtn();
   };
@@ -1391,8 +1414,8 @@ function bcConnectSignaling(addr) {
   };
 
   bcWs.onclose = () => {
-    if (bcLocalStream) bcSetStatus("Signaling server disconnected", "error");
     maybeShowOpenServerPageBtn();
+    if (bcLocalStream) bcScheduleReconnect(false);
   };
 }
 
@@ -2579,6 +2602,14 @@ function attachLsConnectionHandlers(conn) {
       teardownMeter();
       stopStatsWatchdog();
       setMediaPlaybackState("none");
+      // Actually close it, and drop our reference — signalingState stays
+      // "stable" even once connectionState reaches "failed" (only SDP
+      // negotiation changes signalingState, not connectivity loss). Without
+      // this, handleIncomingOffer()'s reuse-check (lsPc && signalingState
+      // !== "closed") stays true forever, so a later fresh offer would
+      // incorrectly try to reuse this dead connection instead of building a
+      // new one — signaling completes fine, but audio never actually resumes.
+      if (conn === lsPc) { lsPc.close(); lsPc = null; }
       if (signalingMethod === "manual") {
         setStatus("Broadcaster disconnected — scan a new QR to reconnect", "error");
         triggerConnectionLostAlert();
