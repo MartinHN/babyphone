@@ -2453,11 +2453,28 @@ function openSocket() {
         ws.send(JSON.stringify({ type: "listen", broadcasterId: selectedBroadcasterId }));
         setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
       } else if (selectedBroadcasterId) {
-        // Still waiting for the broadcaster we're locked onto to reappear —
-        // don't clear the selection or force the picker open. That's an
-        // explicit user action (Change mode → Listen again), not something
-        // a transient absence from one list update should decide for them.
-        setStatus(`Waiting for "${selectedBroadcasterName}" to come back...`, "reconnecting");
+        // The relay server assigns broadcasters a fresh id every time THEY
+        // reconnect (an incrementing counter per WS connection, not a stable
+        // per-device id) — so matching on id alone would mean we can never
+        // find "the same broadcaster" again once it reconnects. Match by
+        // name instead, which is what a human actually means by "the same
+        // broadcaster," and adopt its new id if found.
+        const reconnected = msg.broadcasters.find((b) => b.name === selectedBroadcasterName);
+        if (reconnected) {
+          selectedBroadcasterId = reconnected.id;
+          ws.send(JSON.stringify({ type: "listen", broadcasterId: reconnected.id }));
+          setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
+        } else {
+          // Still waiting for the broadcaster we're locked onto to reappear —
+          // don't clear the selection or force the picker open. That's an
+          // explicit user action (Change mode → Listen again), not something
+          // a transient absence from one list update should decide for them.
+          teardownMeter();
+          stopStatsWatchdog();
+          setMediaPlaybackState("none");
+          setStatus(`Waiting for "${selectedBroadcasterName}" to come back...`, "reconnecting");
+          triggerConnectionLostAlert();
+        }
       } else {
         setStatus("Choose a broadcaster below", "");
         renderBroadcasterList(msg.broadcasters);
@@ -2471,6 +2488,7 @@ function openSocket() {
       // Same reasoning as above — stay locked onto this broadcaster and keep
       // waiting rather than bouncing back to the picker automatically.
       setStatus(`"${selectedBroadcasterName}" disconnected — waiting for it to come back...`, "error");
+      triggerConnectionLostAlert();
       ws.send(JSON.stringify({ type: "list-broadcasters" }));
     } else if (msg.type === "offer") {
       await handleIncomingOffer({ type: "offer", sdp: msg.sdp });
