@@ -1289,12 +1289,11 @@ function primeVideoPermission() {
     });
 }
 
-async function bcStart() {
-  const addr = getServerAddress();
-  if (!addr) {
-    bcSetStatus("Enter the relay server address above first", "error");
-    return;
-  }
+// Shared by both signaling modes: capture the mic, prime video permission,
+// and update the (mode-agnostic) parts of the UI. Returns false on denial —
+// callers should just return early in that case, everything's already
+// handled here (status message, re-enabling the button).
+async function bcCaptureMicAndPrepare() {
   bcStartBtn.disabled = true;
   deviceNameInput.disabled = true;
   iceServers = buildIceServers();
@@ -1304,14 +1303,23 @@ async function bcStart() {
     bcSetStatus("Mic access denied: " + err.message, "error");
     bcStartBtn.disabled = false;
     deviceNameInput.disabled = false;
-    return;
+    return false;
   }
   primeVideoPermission();
-
-  bcSetStatus("Mic captured. Waiting for listeners...", "live");
   showStatusNotification("sending");
   bcStartBtn.textContent = "Stop Broadcasting";
   bcStartBtn.disabled = false;
+  return true;
+}
+
+async function bcStart() {
+  const addr = getServerAddress();
+  if (!addr) {
+    bcSetStatus("Enter the relay server address above first", "error");
+    return;
+  }
+  if (!(await bcCaptureMicAndPrepare())) return;
+  bcSetStatus("Mic captured. Waiting for listeners...", "live");
   bcConnectSignaling(addr);
 }
 
@@ -1320,6 +1328,8 @@ function bcStop() {
   bcPeers.forEach((pc) => pc.close());
   bcPeers.clear();
   if (manualBcPc) { manualBcPc.close(); manualBcPc = null; }
+  restartRetryTimers.forEach((timer) => clearTimeout(timer));
+  restartRetryTimers.clear();
   bcVideoState.forEach((state) => state.stream.getTracks().forEach((t) => t.stop()));
   bcVideoState.clear();
   bcControlChannels.clear();
@@ -1363,6 +1373,7 @@ function bcConnectSignaling(addr) {
       if (pc) pc.close();
       bcPeers.delete(msg.id);
       mainAudioSenders.delete(msg.id);
+      clearRestartRetry(msg.id);
       const videoState = bcVideoState.get(msg.id);
       if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
       bcVideoState.delete(msg.id);
@@ -1385,16 +1396,65 @@ function bcConnectSignaling(addr) {
   };
 }
 
-async function bcCreatePeerForListener(id) {
+// ---------- ICE restart with retry ----------
+// A single restartIce() attempt right when connectionState first flips to
+// "disconnected" can easily fire too early — the new network path (e.g.
+// cellular data) often isn't actually routable yet for the first second or
+// two. One failed attempt with no follow-up left the connection permanently
+// stuck. This retries a few times with a short delay instead of giving up
+// after one shot, and stops as soon as the connection actually recovers.
+const restartRetryTimers = new Map(); // key -> timeout id
+
+function attemptRestartWithRetry(pc, key, { maxAttempts = 5, delayMs = 3000 } = {}) {
+  clearRestartRetry(key);
+  let attempts = 0;
+  function tryRestart() {
+    if (pc.connectionState !== "disconnected") return; // already recovered, or moved on to failed/closed
+    attempts++;
+    console.warn(`ICE restart attempt ${attempts}/${maxAttempts} for`, key);
+    try { pc.restartIce(); } catch (err) { console.warn("restartIce failed:", err.name, err.message); }
+    if (attempts < maxAttempts) {
+      restartRetryTimers.set(key, setTimeout(tryRestart, delayMs));
+    } else {
+      restartRetryTimers.delete(key);
+    }
+  }
+  tryRestart();
+}
+function clearRestartRetry(key) {
+  const timer = restartRetryTimers.get(key);
+  if (timer) { clearTimeout(timer); restartRetryTimers.delete(key); }
+}
+
+// Shared by both signaling modes: the actual WebRTC mechanics of a
+// broadcaster-side connection are identical regardless of how the offer/answer
+// gets exchanged — only that exchange itself (WS vs QR-then-datachannel)
+// differs, and stays in each caller. `key` is "manual" for the single manual
+// connection, or the listener id for a relay-mode connection.
+function createBcPeerConnection(key) {
   const pc = new RTCPeerConnection({ iceServers });
+
+  // Data channel for vox-config/video/ping — same generic setup regardless of
+  // mode, so these no longer depend on the relay server recognizing new
+  // message types. The initial offer/answer/ICE exchange itself stays on
+  // whatever transport each mode actually uses for that.
+  setupBcControlChannel(pc.createDataChannel("control"), key);
+
+  pc.ontrack = (e) => {
+    document.getElementById("bcIncomingAudio").srcObject = e.streams[0];
+    const track = e.track;
+    const incomingEl = document.getElementById("talkbackIncoming");
+    track.onunmute = () => { incomingEl.textContent = "🔊 Listener is talking"; };
+    track.onmute = () => { incomingEl.textContent = ""; };
+  };
+
+  return pc;
+}
+
+async function bcCreatePeerForListener(id) {
+  const pc = createBcPeerConnection(id);
   bcPeers.set(id, pc);
   bcUpdateListenerCount();
-
-  // Data channel for vox-config/video/ping — same generic setup as manual mode,
-  // so these no longer depend on the relay server recognizing new message
-  // types. The initial offer/answer/ICE exchange stays on the WebSocket, since
-  // that's the relay server's actual job and it's already proven to work.
-  setupBcControlChannel(pc.createDataChannel("control"), id);
 
   // Unified path for the very first offer AND any later renegotiation/restart
   // offer (e.g. after restartIce()) — both just fire this same event, so there's
@@ -1409,14 +1469,6 @@ async function bcCreatePeerForListener(id) {
     }
   };
 
-  pc.ontrack = (e) => {
-    document.getElementById("bcIncomingAudio").srcObject = e.streams[0];
-    const track = e.track;
-    const incomingEl = document.getElementById("talkbackIncoming");
-    track.onunmute = () => { incomingEl.textContent = "🔊 Listener is talking"; };
-    track.onmute = () => { incomingEl.textContent = ""; };
-  };
-
   pc.onicecandidate = (e) => {
     if (e.candidate) {
       bcWs.send(JSON.stringify({ type: "ice", id, candidate: e.candidate }));
@@ -1426,11 +1478,25 @@ async function bcCreatePeerForListener(id) {
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "connected") {
       bcUpdateListenerCount();
+      clearRestartRetry(id);
     } else if (pc.connectionState === "disconnected") {
       // Transient — often a network change (Wi-Fi ↔ cellular) rather than a real
       // hangup. Try to recover the SAME connection before giving up on it.
-      console.warn("Listener", id, "disconnected — attempting ICE restart");
-      try { pc.restartIce(); } catch (err) { console.warn("restartIce failed:", err.name, err.message); }
+      attemptRestartWithRetry(pc, id);
+    } else if (["failed", "closed"].includes(pc.connectionState)) {
+      // Retries exhausted (or the browser gave up on its own) — this listener
+      // is genuinely gone. Clean it up properly rather than leaving a dead
+      // entry sitting in every tracking map forever.
+      console.warn("Listener", id, "connection failed permanently — cleaning up");
+      clearRestartRetry(id);
+      pc.close();
+      bcPeers.delete(id);
+      mainAudioSenders.delete(id);
+      const videoState = bcVideoState.get(id);
+      if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
+      bcVideoState.delete(id);
+      bcControlChannels.delete(id);
+      bcUpdateListenerCount();
     }
   };
 
@@ -1541,23 +1607,8 @@ function setupBcControlChannel(channel, id) {
 }
 
 async function bcStartManual() {
-  bcStartBtn.disabled = true;
-  deviceNameInput.disabled = true;
-  iceServers = buildIceServers();
-  try {
-    bcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch (err) {
-    bcSetStatus("Mic access denied: " + err.message, "error");
-    bcStartBtn.disabled = false;
-    deviceNameInput.disabled = false;
-    return;
-  }
-  primeVideoPermission();
-
+  if (!(await bcCaptureMicAndPrepare())) return;
   bcSetStatus("Mic captured. Generating offer (this can take a few seconds)...", "live");
-  showStatusNotification("sending");
-  bcStartBtn.textContent = "Stop Broadcasting";
-  bcStartBtn.disabled = false;
   listenersEl.textContent = "No listeners connected yet";
   document.getElementById("manualBcFlow").classList.remove("hidden");
   // Don't reveal the QR/text step yet — it would show empty containers while the
@@ -1565,16 +1616,11 @@ async function bcStartManual() {
   document.getElementById("manualBcOfferStep").classList.add("hidden");
   document.getElementById("manualBcAnswerStep").classList.add("hidden");
 
-  manualBcPc = new RTCPeerConnection({ iceServers });
+  manualBcPc = createBcPeerConnection("manual");
   bcLocalStream.getTracks().forEach((track) => {
     const sender = manualBcPc.addTrack(track, bcLocalStream);
     mainAudioSenders.set("manual", sender);
   });
-
-  // Opened before the first offer, so it's included in that same initial SDP —
-  // this becomes our signaling transport for anything after the first QR exchange
-  // (video on/off requests, and the renegotiation they trigger).
-  setupBcControlChannel(manualBcPc.createDataChannel("control"), "manual");
 
   manualBcPc.onnegotiationneeded = async () => {
     // Fires automatically whenever a track is added/removed after the initial
@@ -1592,26 +1638,20 @@ async function bcStartManual() {
     }
   };
 
-  manualBcPc.ontrack = (e) => {
-    document.getElementById("bcIncomingAudio").srcObject = e.streams[0];
-    const track = e.track;
-    const incomingEl = document.getElementById("talkbackIncoming");
-    track.onunmute = () => { incomingEl.textContent = "🔊 Listener is talking"; };
-    track.onmute = () => { incomingEl.textContent = ""; };
-  };
   manualBcPc.onconnectionstatechange = () => {
     if (manualBcPc.connectionState === "connected") {
       bcSetStatus("Listener connected", "live");
       listenersEl.textContent = "1 listener connected";
     } else if (manualBcPc.connectionState === "disconnected") {
-      // Transient — often a network change rather than a real hangup. The restart
-      // offer travels over the control data channel (still alive at this point,
-      // since it rides the same transport that's only just gone quiet, not dead).
-      bcSetStatus("⚠️ Connection interrupted — attempting ICE restart...", "reconnecting");
-      console.warn("Broadcaster: connection disconnected — attempting ICE restart");
-      try { manualBcPc.restartIce(); } catch (err) { console.warn("restartIce failed:", err.name, err.message); }
+      // Transient — WebRTC's own ICE consent-freshness checks can self-heal
+      // this without any action from us. Manual/QR mode has no active
+      // recovery mechanism (that's deliberate — it keeps the data channel
+      // scoped to session-independent things like VOX/video/ping, identical
+      // to relay mode, rather than also carrying reconnection traffic). If it
+      // doesn't recover on its own, the listener will need a fresh QR.
+      bcSetStatus("⚠️ Connection interrupted — waiting to see if it recovers...", "reconnecting");
     } else if (["failed", "closed"].includes(manualBcPc.connectionState)) {
-      bcSetStatus("Listener disconnected", "error");
+      bcSetStatus("Listener disconnected — they'll need to scan a new QR to reconnect", "error");
       listenersEl.textContent = "No listeners connected yet";
     }
   };
@@ -1833,10 +1873,10 @@ function setupLsControlChannel(channel) {
       manualLastPongAt = Date.now();
     } else if (msg.type === "offer") {
       // Renegotiation offer from the broadcaster (e.g. video track added/removed).
-      await manualLsPc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
-      const answer = await manualLsPc.createAnswer();
-      await manualLsPc.setLocalDescription(answer);
-      channel.send(JSON.stringify({ type: "answer", sdp: manualLsPc.localDescription.sdp }));
+      await lsPc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+      const answer = await lsPc.createAnswer();
+      await lsPc.setLocalDescription(answer);
+      channel.send(JSON.stringify({ type: "answer", sdp: lsPc.localDescription.sdp }));
     } else if (msg.type === "video-unavailable") {
       videoRequested = false;
       showVideoBtn.textContent = "📹 Show Video";
@@ -1871,7 +1911,7 @@ let selectedBroadcasterName = null;
 let latestBroadcasterList = [];
 
 let ws = null;
-let pc = null;
+let lsPc = null; // the listener's single peer connection — shared by both signaling modes
 let wakeLock = null;
 let shouldStayConnected = false;
 let reconnectAttempt = 0;
@@ -1990,7 +2030,7 @@ async function releaseWakeLock() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && shouldStayConnected) {
     requestWakeLock();
-    if (!pc || pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+    if (!lsPc || lsPc.connectionState === "failed" || lsPc.connectionState === "disconnected" || lsPc.connectionState === "closed") {
       scheduleReconnect(true);
     }
   }
@@ -2168,7 +2208,7 @@ function stopHeartbeat() {
 }
 
 function getActivePc() {
-  return signalingMethod === "manual" ? manualLsPc : pc;
+  return lsPc;
 }
 
 function startStatsWatchdog() {
@@ -2311,9 +2351,8 @@ function connect() {
 function disconnect() {
   shouldStayConnected = false;
   clearTimeout(reconnectTimer);
-  if (pc) { pc.close(); pc = null; }
+  if (lsPc) { lsPc.close(); lsPc = null; }
   if (ws) { ws.close(); ws = null; }
-  if (manualLsPc) { manualLsPc.close(); manualLsPc = null; }
   teardownTalkback();
   stopManualHeartbeat();
   manualLsControlChannel = null;
@@ -2400,7 +2439,7 @@ function openSocket() {
       }
     } else if (msg.type === "broadcaster-gone" && msg.id === selectedBroadcasterId) {
       selectedBroadcasterId = null;
-      if (pc) { pc.close(); pc = null; }
+      if (lsPc) { lsPc.close(); lsPc = null; }
       teardownMeter();
       stopStatsWatchdog();
       setMediaPlaybackState("none");
@@ -2408,10 +2447,10 @@ function openSocket() {
       showPicker();
       ws.send(JSON.stringify({ type: "list-broadcasters" }));
     } else if (msg.type === "offer") {
-      await handleOffer(msg.sdp);
+      await handleIncomingOffer({ type: "offer", sdp: msg.sdp });
     } else if (msg.type === "ice") {
-      if (pc && msg.candidate) {
-        try { await pc.addIceCandidate(msg.candidate); } catch {}
+      if (lsPc && msg.candidate) {
+        try { await lsPc.addIceCandidate(msg.candidate); } catch {}
       }
     }
   };
@@ -2424,22 +2463,13 @@ function openSocket() {
   ws.onerror = () => ws.close();
 }
 
-async function handleOffer(sdp) {
-  if (pc && pc.signalingState !== "closed") {
-    // This is a renegotiation/restart offer on our EXISTING connection (e.g. the
-    // broadcaster called restartIce() after a network blip) — reuse it rather
-    // than tearing down and losing local talkback/video state.
-    await pc.setRemoteDescription({ type: "offer", sdp });
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
-    return;
-  }
-
-  // First-ever offer for this session — build a fresh connection.
-  pc = new RTCPeerConnection({ iceServers });
-
-  pc.ontrack = (e) => {
+// Shared by both signaling modes: the WebRTC mechanics of the listener's
+// connection (ontrack routing, data channel, connection-state lifecycle) are
+// identical regardless of how the offer/answer was exchanged — only that
+// exchange itself, and how "connection genuinely lost" gets handled,
+// actually differ. `conn` becomes `lsPc` in the caller.
+function attachLsConnectionHandlers(conn) {
+  conn.ontrack = (e) => {
     if (e.track.kind === "video") {
       const videoEl = document.getElementById("remoteVideoEl");
       videoEl.srcObject = e.streams[0];
@@ -2449,28 +2479,27 @@ async function handleOffer(sdp) {
     audioEl.srcObject = e.streams[0];
     audioEl.muted = false;
     audioEl.volume = 1;
-    reconnectAttempt = 0;
+    if (signalingMethod !== "manual") reconnectAttempt = 0;
     audioEl.play().catch((err) => {
       console.warn("audio.play() blocked:", err.message);
       setStatus("Tap the page to enable audio playback", "reconnecting");
     });
     setupMeter(e.streams[0]);
+    if (signalingMethod === "manual") startStatsWatchdog();
   };
 
-  pc.ondatachannel = (e) => {
+  conn.ondatachannel = (e) => {
     setupLsControlChannel(e.channel);
   };
 
-  pc.onicecandidate = (e) => {
-    if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") {
+  conn.onconnectionstatechange = () => {
+    if (conn.connectionState === "connected") {
       connectBtn.classList.add("hidden");
-      hidePicker();
+      if (signalingMethod === "manual") {
+        document.getElementById("manualLsFlow").classList.add("hidden");
+      } else {
+        hidePicker();
+      }
       stopConnectionLostAlert();
       // Don't rely solely on the <audio> element's 'playing' event to restore
       // the live UI — after an ICE-restart recovery (same track, same
@@ -2485,26 +2514,36 @@ async function handleOffer(sdp) {
         showStatusNotification("live");
         if (!statsWatchdogInterval) startStatsWatchdog();
       }
-    } else if (pc.connectionState === "disconnected") {
-      // Transient — give the broadcaster's restartIce() a chance to recover this
-      // same connection before we tear anything down.
-      setStatus("⚠️ Network hiccup — attempting to recover...", "reconnecting");
-    } else if (["failed", "closed"].includes(pc.connectionState)) {
+    } else if (conn.connectionState === "disconnected") {
+      // Transient in both modes — WebRTC's own ICE consent-freshness checks
+      // can self-heal this on their own. Relay mode additionally has the
+      // broadcaster actively attempting restartIce(); manual mode doesn't
+      // (see the broadcaster's handler for why), hence the different wording.
+      if (signalingMethod === "manual") {
+        setStatus("⚠️ Connection interrupted — waiting to see if it recovers...", "reconnecting");
+      } else {
+        setStatus("⚠️ Network hiccup — attempting to recover...", "reconnecting");
+      }
+    } else if (["failed", "closed"].includes(conn.connectionState)) {
       document.getElementById("remoteVideoEl").classList.add("hidden");
       connectBtn.classList.remove("hidden");
-      if (shouldStayConnected) scheduleReconnect(false);
+      // Tear this down immediately, right here — don't rely on scheduleReconnect()
+      // to eventually do it. It's delayed (runs after a backoff timer) and, if
+      // shouldStayConnected is ever false, skips it entirely — leaving the VU
+      // meter rendering stale/leftover audio data in the meantime, which looks
+      // exactly like audio is still coming in when the connection is actually dead.
+      teardownMeter();
+      stopStatsWatchdog();
+      setMediaPlaybackState("none");
+      if (signalingMethod === "manual") {
+        setStatus("Broadcaster disconnected — scan a new QR to reconnect", "error");
+        triggerConnectionLostAlert();
+      } else if (shouldStayConnected) {
+        scheduleReconnect(false);
+      }
     }
   };
-
-  await pc.setRemoteDescription({ type: "offer", sdp });
-  await setupTalkback(pc);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
 }
-
-// ---------- Manual (QR code) listener flow: one direct peer, no relay server ----------
-let manualLsPc = null;
 
 function startManualListen() {
   connectBtn.disabled = true;
@@ -2520,95 +2559,71 @@ function startManualListen() {
   });
 }
 
-async function handleManualOffer(bytes) {
-  const offer = await decodeFromBytes(bytes);
-  if (manualLsPc) manualLsPc.close();
-  manualLsPc = new RTCPeerConnection({ iceServers });
-  manualLsControlChannel = null;
-  stopManualHeartbeat();
-  videoRequested = false;
-  showVideoBtn.disabled = true;
-  showVideoBtn.textContent = "📹 Show Video";
-  remoteVideoEl.classList.add("hidden");
-  remoteVideoEl.srcObject = null;
-
-  manualLsPc.ontrack = (e) => {
-    if (e.track.kind === "video") {
-      const videoEl = document.getElementById("remoteVideoEl");
-      videoEl.srcObject = e.streams[0];
-      videoEl.classList.remove("hidden");
-      return;
-    }
-    audioEl.srcObject = e.streams[0];
-    audioEl.muted = false;
-    audioEl.volume = 1;
-    audioEl.play().catch((err) => {
-      console.warn("audio.play() blocked:", err.message);
-      setStatus("Tap the page to enable audio playback", "reconnecting");
-    });
-    setupMeter(e.streams[0]);
-    startStatsWatchdog();
-  };
-
-  manualLsPc.ondatachannel = (e) => {
-    setupLsControlChannel(e.channel);
-  };
-
-  manualLsPc.onconnectionstatechange = () => {
-    if (manualLsPc.connectionState === "connected") {
-      connectBtn.classList.add("hidden");
-      document.getElementById("manualLsFlow").classList.add("hidden");
-      stopConnectionLostAlert();
-      // Same reasoning as relay mode: don't rely solely on the <audio>
-      // element's 'playing' event, since an ICE-restart recovery may never
-      // trigger it if the element's own playback state machine never
-      // perceived an interruption in the first place.
-      if (audioEl.srcObject) {
-        setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
-        setupMeter(audioEl.srcObject);
-        setMediaPlaybackState("playing");
-        showStatusNotification("live");
-        if (!statsWatchdogInterval) startStatsWatchdog();
-      }
-    } else if (manualLsPc.connectionState === "disconnected") {
-      // Transient — the broadcaster's own onconnectionstatechange will attempt
-      // restartIce() on its side; we just need to not tear down our audio/meter
-      // state prematurely while that has a chance to land.
-      setStatus("⚠️ Network hiccup — attempting to recover...", "reconnecting");
-    } else if (["failed", "closed"].includes(manualLsPc.connectionState)) {
-      setStatus("Broadcaster disconnected", "error");
-      teardownMeter();
-      stopStatsWatchdog();
-      setMediaPlaybackState("none");
-      document.getElementById("remoteVideoEl").classList.add("hidden");
-      connectBtn.classList.remove("hidden");
-      triggerConnectionLostAlert();
-    }
-  };
-
-  await manualLsPc.setRemoteDescription(offer);
-  await setupTalkback(manualLsPc);
-  setStatus("Offer received. Generating answer (this can take a few seconds)...", "");
-  const answer = await manualLsPc.createAnswer();
-  await manualLsPc.setLocalDescription(answer);
-  await waitForIceGathering(manualLsPc);
-
-  const answerBytes = await encodeToBytes(toPlainDescription(manualLsPc.localDescription));
-  document.getElementById("manualLsAnswerText").value = toBackupText(toPlainDescription(manualLsPc.localDescription));
-  document.getElementById("manualLsOfferStep").classList.add("hidden");
-  document.getElementById("manualLsAnswerStep").classList.remove("hidden");
-  setStatus("Show this QR back to the broadcaster", "");
-  try {
-    await renderQR("manualLsQrImg", answerBytes);
-  } catch (e) {
-    setStatus("Answer too large for QR — use the text backup below.", "error");
+async function handleIncomingOffer(offer) {
+  if (signalingMethod !== "manual" && lsPc && lsPc.signalingState !== "closed") {
+    // Renegotiation/restart offer on our EXISTING relay-mode connection (e.g.
+    // the broadcaster called restartIce() after a network blip) — reuse it
+    // rather than tearing down and losing local talkback/video state. Manual
+    // mode never reaches this branch: it has no reconnection (see
+    // attachLsConnectionHandlers), so every scan/paste always builds fresh.
+    await lsPc.setRemoteDescription(offer);
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+    return;
   }
-  connectBtn.disabled = false;
+
+  // First-ever offer for this session (manual mode: always this branch).
+  if (lsPc) lsPc.close();
+  lsPc = new RTCPeerConnection({ iceServers });
+  attachLsConnectionHandlers(lsPc);
+
+  if (signalingMethod === "manual") {
+    manualLsControlChannel = null;
+    stopManualHeartbeat();
+    videoRequested = false;
+    showVideoBtn.disabled = true;
+    showVideoBtn.textContent = "📹 Show Video";
+    remoteVideoEl.classList.add("hidden");
+    remoteVideoEl.srcObject = null;
+  } else {
+    lsPc.onicecandidate = (e) => {
+      if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
+      }
+    };
+  }
+
+  await lsPc.setRemoteDescription(offer);
+  await setupTalkback(lsPc);
+
+  if (signalingMethod === "manual") {
+    setStatus("Offer received. Generating answer (this can take a few seconds)...", "");
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    await waitForIceGathering(lsPc);
+
+    const answerBytes = await encodeToBytes(toPlainDescription(lsPc.localDescription));
+    document.getElementById("manualLsAnswerText").value = toBackupText(toPlainDescription(lsPc.localDescription));
+    document.getElementById("manualLsOfferStep").classList.add("hidden");
+    document.getElementById("manualLsAnswerStep").classList.remove("hidden");
+    setStatus("Show this QR back to the broadcaster", "");
+    try {
+      await renderQR("manualLsQrImg", answerBytes);
+    } catch (e) {
+      setStatus("Answer too large for QR — use the text backup below.", "error");
+    }
+    connectBtn.disabled = false;
+  } else {
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+  }
 }
 
 document.getElementById("manualLsScanBtn").addEventListener("click", () => {
-  scanQR(document.getElementById("manualLsVideo"), document.getElementById("manualLsSwitchCamBtn"), (bytes) => {
-    handleManualOffer(bytes);
+  scanQR(document.getElementById("manualLsVideo"), document.getElementById("manualLsSwitchCamBtn"), async (bytes) => {
+    await handleIncomingOffer(await decodeFromBytes(bytes));
   });
 });
 
@@ -2616,7 +2631,7 @@ document.getElementById("manualLsPasteBtn").addEventListener("click", async () =
   const text = document.getElementById("manualLsPasteText").value.trim();
   if (!text) return;
   const bytes = await backupTextToBytes(text);
-  await handleManualOffer(bytes);
+  await handleIncomingOffer(await decodeFromBytes(bytes));
 });
 
 document.getElementById("manualLsCopyAnswerBtn").addEventListener("click", (e) => {
