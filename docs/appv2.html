@@ -2467,8 +2467,6 @@ function changeMode() {
   else if (mode === "listen") disconnect();
   mode = null;
   localStorage.removeItem(LAST_SESSION_KEYS.mode);
-  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterId);
-  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterName);
   broadcastSection.style.display = "none";
   listenSection.style.display = "none";
   changeModeBtn.style.display = "none";
