@@ -10,7 +10,7 @@
 <!-- iOS home-screen / standalone support -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="MicStream" />
+<meta name="apple-mobile-web-app-title" content="NiloPhone" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js" integrity="sha512-DSzvYfxJWRi3E6vfcGQfL5CqOlApxYrrdqRP3hRCnoiZ0oM6+ccYjbtdzQFUrAOI/ehKk0VKFuKs5GseGPkVjQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -18,6 +18,16 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
 <style>
+  :root {
+    /* Standardized design tokens — use these instead of ad-hoc inline
+       colors/spacing, so new elements stay visually consistent with old ones. */
+    --gap-sm: 8px;
+    --gap-md: 16px;
+    --radius: 6px;
+    --border-color: #ccc;
+    --text-muted: #666;
+    --text-label: #444;
+  }
   body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; text-align: center; color: #1a1a1a; padding: 0 16px; }
   h1 { font-size: 1.3rem; margin-bottom: 4px; }
   #status, #bcStatus { margin: 24px 0; padding: 14px; border-radius: 8px; background: #f0f0f0; font-size: 0.95rem; }
@@ -28,6 +38,14 @@
   button:disabled { opacity: 0.5; cursor: default; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #999; margin-right: 6px; }
   .dot.live { background: #16a34a; }
+  .w-full { width: 100%; }
+  .text-muted { font-size: 0.8rem; color: var(--text-muted); }
+  /* Horizontal "label: input" row — inline label + input sharing one line,
+     distinct from .field-row's stacked label-above-input layout below. */
+  .field-row-inline { display: flex; align-items: center; gap: var(--gap-sm); text-align: left; margin-top: var(--gap-sm); }
+  .field-row-inline:first-child { margin-top: 0; }
+  .field-row-inline label { white-space: nowrap; margin: 0; }
+  .field-row-inline input { flex: 1; padding: 8px; border-radius: var(--radius); border: 1px solid var(--border-color); }
   .dot.reconnecting { background: #d97706; }
   .row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; font-size: 0.9rem; color: #444; }
   .field-row { margin-bottom: 16px; text-align: left; }
@@ -67,7 +85,7 @@
   .settings-heading { font-size: 0.95rem; color: #16a34a; border-top: 1px solid #eee; padding-top: 16px; margin: 20px 0 12px 0; }
   .settings-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
   :root {
-    --nilo-img: url("data:image/webp;base64,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");
+    --nilo-img: url("icons/icon-192.png");
   }
   #pushToTalkBtn.active { background: #dc2626; color: white; border-color: #dc2626; }
 
@@ -93,7 +111,7 @@
     margin: 0;
     font-family: "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive, sans-serif;
     font-weight: 900;
-    font-size: 1.7rem;
+    font-size: 1.5rem;
     letter-spacing: 0.5px;
     background: linear-gradient(90deg, #ff00cc, #ff8800, #ffee00, #00ff88, #00ccff, #cc00ff, #ff00cc);
     background-size: 300% auto;
@@ -105,13 +123,26 @@
     filter: drop-shadow(0 2px 0 rgba(0,0,0,0.08));
     white-space: nowrap;
   }
+  /* The title row (avatars + rainbow text) can be wider than a narrow phone
+     screen. min-width:0 is what actually prevents that from pushing
+     #burgerBtn off-screen — it's what lets this flex item shrink below its
+     content's natural width. Deliberately NOT paired with overflow:hidden
+     here (or on #niloTitle): the avatars/sparkles scale and rotate past
+     their own box on every animation frame, and hidden overflow would clip
+     that motion. #burgerBtn keeps flex-shrink:0 and comes later in the DOM,
+     so on the rare screen too narrow for all of this, it still renders on
+     top and stays clickable rather than getting clipped or pushed off.
+  */
+  #niloTitleRow {
+    min-width: 0;
+  }
   .nilo-sparkle {
     display: inline-block;
     animation: nilo-sparkle-spin 2.2s ease-in-out infinite;
   }
   .nilo-flank {
-    width: 46px;
-    height: 46px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     background-image: var(--nilo-img);
     background-size: cover;
@@ -128,7 +159,6 @@
     justify-content: center;
     gap: 4px;
     margin-bottom: 4px;
-    overflow: hidden;
   }
   #niloStickerRow .nilo-sticker {
     width: 26px;
@@ -140,6 +170,22 @@
     border: 2px solid #ffee00;
     box-shadow: 0 0 6px rgba(255, 200, 0, 0.6);
     animation: nilo-bounce 1.4s ease-in-out infinite;
+  }
+  /* Decorative-only — pause once actively broadcasting/listening. The header
+     stays visible the whole session (which can run for hours), but nobody's
+     looking at kitsch decorations during passive monitoring; the wiggle/spin
+     is GPU-cheap either way, but there's no reason to keep spending even
+     that for a screen no one's watching. */
+  body.session-active #niloTitle,
+  body.session-active .nilo-sparkle,
+  body.session-active .nilo-flank,
+  body.session-active .nilo-sticker {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #niloTitle, .nilo-sparkle, .nilo-flank, .nilo-sticker {
+      animation: none;
+    }
   }
 </style>
 </head>
@@ -153,13 +199,13 @@
     <div class="nilo-sticker" style="animation-delay:0.5s;"></div>
     <div class="nilo-sticker" style="animation-delay:0.6s;"></div>
   </div>
-  <div style="display:flex; align-items:center; justify-content:space-between;">
-    <div style="display:flex; align-items:center; gap:8px; flex:1; justify-content:center;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--gap-sm);">
+    <div id="niloTitleRow" style="display:flex; align-items:center; gap:var(--gap-sm); flex:1; justify-content:center;">
       <div class="nilo-flank nilo-flank-left" aria-hidden="true"></div>
       <h1 id="niloTitle"><span class="nilo-sparkle">✨</span> NiloPhone <span class="nilo-sparkle">✨</span></h1>
       <div class="nilo-flank nilo-flank-right" aria-hidden="true"></div>
     </div>
-    <button id="burgerBtn" aria-label="Settings">☰</button>
+    <button id="burgerBtn" aria-label="Settings" style="flex-shrink:0;">☰</button>
   </div>
   <button id="changeModeBtn">← Change mode</button>
 
@@ -173,21 +219,23 @@
     <h2 class="settings-heading">Connection</h2>
     <div id="signalingMethodRow">
       <strong style="font-size:0.85rem; color:#444;">Connection method:</strong>
-      <label><input type="radio" name="signalingMethod" value="relay" id="methodRelay"> Relay server (WebSocket) — auto-discovery, auto-reconnect</label>
-      <label><input type="radio" name="signalingMethod" value="manual" id="methodManual" checked> Manual (QR code, no server) — good for Tailscale/direct IP setups</label>
+      <label><input type="radio" name="signalingMethod" value="manual" id="methodManual" checked>
+        Manual (QR code) — no setup, but no auto-reconnect and doesn't work over mobile data (same WiFi/network only)</label>
+      <label><input type="radio" name="signalingMethod" value="relay" id="methodRelay">
+        Relay server (WebSocket) — needs a server running, but auto-discovers broadcasters and auto-reconnects</label>
     </div>
 
     <div id="relayAddrRow">
-      <div class="field-row" style="display:flex; align-items:center; gap:8px; text-align:left;">
-        <label for="serverAddr" style="white-space:nowrap; margin:0;">Relay server address:</label>
-        <input type="text" id="serverAddr" placeholder="192.168.1.42:3000" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+      <div class="field-row-inline">
+        <label for="serverAddr">Relay server address:</label>
+        <input type="text" id="serverAddr" placeholder="192.168.1.42:3000" />
       </div>
-      <div class="field-row" style="display:flex; align-items:center; gap:8px; text-align:left; margin-top:8px;">
-        <label for="accessToken" style="white-space:nowrap; margin:0;">Access token:</label>
-        <input type="text" id="accessToken" placeholder="printed in the server's console on startup" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+      <div class="field-row-inline">
+        <label for="accessToken">Access token:</label>
+        <input type="text" id="accessToken" placeholder="printed in the server's console on startup" />
       </div>
-      <button id="openServerPageBtn" class="hidden" style="width:100%; margin-top:8px;">🔓 Open relay server page (accept certificate)</button>
-      <div id="openServerPageStatus" style="font-size:0.8rem; color:#666; margin-top:4px;"></div>
+      <button id="openServerPageBtn" class="hidden w-full" style="margin-top:8px;">🔓 Open relay server page (accept certificate)</button>
+      <div id="openServerPageStatus" class="text-muted" style="margin-top:4px;"></div>
     </div>
 
     <details id="advancedDetails" style="margin-bottom:16px; text-align:left;">
@@ -211,14 +259,14 @@
     </details>
 
     <div class="field-row">
-      <button id="shareLinkBtn" style="width:100%;">🔗 Copy shareable link (bakes in the fields above)</button>
+      <button id="shareLinkBtn" class="w-full">🔗 Copy shareable link (bakes in the fields above)</button>
       <div id="shareLinkStatus" style="font-size:0.8rem; color:#666; margin-top:6px;"></div>
     </div>
 
     <h2 class="settings-heading">Audio</h2>
     <div class="row" style="justify-content:flex-start;">
       <input type="checkbox" id="wakeToggle" checked />
-      <label for="wakeToggle">Keep screen awake while listening</label>
+      <label for="wakeToggle">Keep screen awake while broadcasting or listening</label>
     </div>
     <div class="row" style="justify-content:flex-start;">
       <input type="checkbox" id="alertToggle" checked />
@@ -230,14 +278,14 @@
     </div>
     <div style="text-align:left; margin-top:4px;">
       <label for="voxThresholdSlider" style="font-size:0.85rem; color:#444;">Sensitivity</label>
-      <input type="range" id="voxThresholdSlider" min="0.005" max="0.08" step="0.005" value="0.02" style="width:100%;" />
+      <input type="range" id="voxThresholdSlider" min="0.005" max="0.08" step="0.005" value="0.02" class="w-full" />
       <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#888;">
         <span>More sensitive</span><span>Less sensitive</span>
       </div>
     </div>
 
     <h2 class="settings-heading">App</h2>
-    <button id="installBtn" style="width:100%;">Install App</button>
+    <button id="installBtn" class="w-full">Install App</button>
     <button id="helpBtn" style="width:100%; margin-top:8px;">❓ Help</button>
   </div>
 
@@ -266,8 +314,11 @@
     you need a <strong>TURN server</strong> — add one under Advanced (STUN/TURN)
     above. Free option: the Open Relay Project (metered.ca), 500MB/month free.
     For full control, self-host <code>coturn</code> on a cheap VPS. TURN works
-    with both connection methods above — it's independent of which one you
-    pick.</p>
+    with both connection methods — it's independent of which one you pick,
+    though manual/QR mode always needs it configured here in the app, since
+    there's no server to ask. In relay mode, if the relay server itself is
+    set up to serve STUN/TURN config, it's applied automatically on connect —
+    nothing to fill in here at all.</p>
 
     <h2 class="settings-heading">Push-to-talk</h2>
     <p>Once connected, listeners get a "Hold to Talk" button to speak back to
@@ -349,7 +400,7 @@
       </div>
       <div id="manualBcAnswerStep" class="hidden">
         <h3>Step 2 of 2: Scan the listener's answer QR</h3>
-        <button id="manualBcScanBtn" style="width:100%;">Scan QR Code</button>
+        <button id="manualBcScanBtn" class="w-full">Scan QR Code</button>
         <button id="manualBcSwitchCamBtn" class="hidden">Switch Camera</button>
         <video id="manualBcVideo" playsinline autoplay muted class="hidden"></video>
         <details>
@@ -369,14 +420,6 @@
     <button id="pushToTalkBtn" class="hidden" style="width:100%; margin-top:14px; padding:18px; font-size:1.1rem; user-select:none; touch-action:none;">🎙️ Hold to Talk</button>
     <div id="talkbackStatus" style="font-size:0.8rem; color:#666; margin-top:4px;"></div>
 
-    <button id="showVideoBtn" disabled style="width:100%; margin-top:10px;">📹 Show Video</button>
-    <select id="videoResolutionSelect" style="width:100%; margin-top:6px; padding:6px;">
-      <option value="low">Low (320×240)</option>
-      <option value="medium" selected>Medium (640×480)</option>
-      <option value="high">High (1280×720)</option>
-    </select>
-    <video id="remoteVideoEl" autoplay playsinline class="hidden" style="width:100%; border-radius:8px; margin-top:10px; background:#000;"></video>
-
     <div id="pickerWrap" style="display:none; margin-top:20px; text-align:left;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <strong style="font-size:0.9rem;">Choose a broadcaster:</strong>
@@ -389,7 +432,7 @@
     <div id="manualLsFlow" class="manual-qr-block hidden">
       <div id="manualLsOfferStep" class="hidden">
         <h3>Step 1 of 2: Scan the broadcaster's QR</h3>
-        <button id="manualLsScanBtn" style="width:100%;">Scan QR Code</button>
+        <button id="manualLsScanBtn" class="w-full">Scan QR Code</button>
         <button id="manualLsSwitchCamBtn" class="hidden">Switch Camera</button>
         <video id="manualLsVideo" playsinline autoplay muted class="hidden"></video>
         <details>
@@ -409,16 +452,21 @@
       </div>
     </div>
 
-
-
     <audio id="audio" autoplay playsinline></audio>
 
     <div id="meterWrap">
       <div id="meterLabel"><span id="meterDb">-∞ dB</span><span id="meterPeakLabel">peak: -∞ dB</span></div>
       <canvas id="meterCanvas"></canvas>
     </div>
-  </div>
 
+    <button id="showVideoBtn" disabled style="width:100%; margin-top:10px;">📹 Show Video</button>
+    <select id="videoResolutionSelect" style="width:100%; margin-top:6px; padding:6px;">
+      <option value="low">Low (320×240)</option>
+      <option value="medium" selected>Medium (640×480)</option>
+      <option value="high">High (1280×720)</option>
+    </select>
+    <video id="remoteVideoEl" autoplay playsinline class="hidden" style="width:100%; border-radius:8px; margin-top:10px; background:#000;"></video>
+  </div>
 
 <script>
 // ============================================================
@@ -435,24 +483,6 @@ const helpModal = document.getElementById("helpModal");
 const helpBtn = document.getElementById("helpBtn");
 const closeHelpBtn = document.getElementById("closeHelpBtn");
 
-function closeAllPanels() {
-  settingsMenu.classList.add("hidden");
-  helpModal.classList.add("hidden");
-  settingsOverlay.classList.add("hidden");
-}
-function openSettings() {
-  helpModal.classList.add("hidden");
-  settingsMenu.classList.remove("hidden");
-  settingsOverlay.classList.remove("hidden");
-}
-function closeSettings() {
-  closeAllPanels();
-}
-function openHelp() {
-  settingsMenu.classList.add("hidden");
-  helpModal.classList.remove("hidden");
-  settingsOverlay.classList.remove("hidden");
-}
 burgerBtn.addEventListener("click", openSettings);
 closeSettingsBtn.addEventListener("click", closeAllPanels);
 settingsOverlay.addEventListener("click", closeAllPanels);
@@ -497,6 +527,7 @@ const fieldEls = {
 (function bootstrapConfig() {
   const params = new URLSearchParams(location.search);
   let gotAnyParam = false;
+  const addrFromUrl = params.get("addr");
 
   for (const [param, [elId, storageKey]] of Object.entries(FIELD_KEYS)) {
     const fromUrl = params.get(param);
@@ -505,6 +536,16 @@ const fieldEls = {
       gotAnyParam = true;
     }
     fieldEls[elId].value = localStorage.getItem(storageKey) || "";
+  }
+
+  // A shareable link with a baked-in server address clearly means relay
+  // mode — a new user opening it shouldn't land on the manual/QR default
+  // and wonder why nothing happens. signalingMethod itself isn't declared
+  // yet at this point in the script, so set the radio + localStorage
+  // directly rather than referencing it.
+  if (addrFromUrl) {
+    document.getElementById("methodRelay").checked = true;
+    localStorage.setItem("micStreamSignalingMethod", "relay");
   }
 
   // Default the address field to same-origin if nothing saved/shared yet,
@@ -527,47 +568,11 @@ for (const [elId, storageKey] of Object.values(FIELD_KEYS)) {
   });
 }
 
-function getServerAddress() {
-  const addr = serverAddrInput.value.trim();
-  if (addr) localStorage.setItem(FIELD_KEYS.addr[1], addr);
-  return addr;
-}
-
-function getAccessToken() {
-  const token = accessTokenInput.value.trim();
-  if (token) localStorage.setItem(FIELD_KEYS.token[1], token);
-  return token;
-}
-
-// ICE servers built entirely client-side from the fields above — no server
-// round-trip, no server-held secret.
-function buildIceServers() {
-  const arr = [];
-  const stun = stunUrlsInput.value.trim();
-  const turn = turnUrlsInput.value.trim();
-
-  if (stun) {
-    arr.push({ urls: stun.split(",").map((s) => s.trim()) });
-  } else if (!turn) {
-    arr.push({ urls: "stun:stun.l.google.com:19302" }); // default only if nothing custom is set
-  }
-
-  if (turn) {
-    const turnUrls = turn.split(",").map((s) => s.trim());
-    arr.push({
-      urls: turnUrls,
-      username: turnUsernameInput.value.trim() || undefined,
-      credential: turnCredentialInput.value.trim() || undefined,
-    });
-    // coturn serves STUN and TURN off the same listener by default — unless
-    // a STUN URL was set explicitly, point STUN at the same host(s) too.
-    if (!stun) {
-      const derived = turnUrls.map((u) => u.replace(/^turns:/, "stuns:").replace(/^turn:/, "stun:"));
-      arr.push({ urls: derived });
-    }
-  }
-  return arr;
-}
+// ICE servers: local Advanced STUN/TURN fields, plus (relay mode only)
+// whatever the relay server hands back in its "welcome" message once
+// connected — see serverIceServers below and buildIceServers() in the
+// Common section.
+let serverIceServers = [];
 let iceServers = buildIceServers();
 
 shareLinkBtn.addEventListener("click", async () => {
@@ -593,13 +598,7 @@ const openServerPageStatus = document.getElementById("openServerPageStatus");
 // Shown only when there's actually a reason to suspect an unaccepted
 // self-signed cert — i.e. the WebSocket just failed with an address entered —
 // rather than always-on clutter for people who don't need it.
-function maybeShowOpenServerPageBtn() {
-  if (serverAddrInput.value.trim()) openServerPageBtn.classList.remove("hidden");
-}
-function hideOpenServerPageBtn() {
-  openServerPageBtn.classList.add("hidden");
-  openServerPageStatus.textContent = "";
-}
+
 serverAddrInput.addEventListener("input", () => {
   if (!serverAddrInput.value.trim()) hideOpenServerPageBtn();
 });
@@ -629,9 +628,6 @@ let signalingMethod = localStorage.getItem(SIGNALING_METHOD_KEY) || "manual";
 if (signalingMethod === "manual") methodManualRadio.checked = true;
 else methodRelayRadio.checked = true;
 
-function applySignalingMethodUI() {
-  relayAddrRow.classList.toggle("hidden", signalingMethod === "manual");
-}
 applySignalingMethodUI();
 
 document.querySelectorAll('input[name="signalingMethod"]').forEach((radio) => {
@@ -646,26 +642,6 @@ document.querySelectorAll('input[name="signalingMethod"]').forEach((radio) => {
 // ============================================================
 // Mode picker
 // ============================================================
-function selectMode(m) {
-  mode = m;
-  modeSelectWrap.style.display = "none";
-  changeModeBtn.style.display = "inline-block";
-  broadcastSection.style.display = m === "broadcast" ? "block" : "none";
-  listenSection.style.display = m === "listen" ? "block" : "none";
-}
-
-function changeMode() {
-  if (mode === "broadcast") bcStop();
-  else if (mode === "listen") disconnect();
-  mode = null;
-  localStorage.removeItem(LAST_SESSION_KEYS.mode);
-  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterId);
-  localStorage.removeItem(LAST_SESSION_KEYS.broadcasterName);
-  broadcastSection.style.display = "none";
-  listenSection.style.display = "none";
-  changeModeBtn.style.display = "none";
-  modeSelectWrap.style.display = "block";
-}
 
 document.getElementById("pickBroadcastBtn").addEventListener("click", () => selectMode("broadcast"));
 document.getElementById("pickListenBtn").addEventListener("click", () => selectMode("listen"));
@@ -682,67 +658,12 @@ changeModeBtn.addEventListener("click", changeMode);
 // Manual (QR code) signaling — shared helpers used by both
 // broadcaster and listener when signalingMethod === "manual"
 // ============================================================
-async function waitForIceGathering(pc, timeoutMs = 4000) {
-  if (pc.iceGatheringState === "complete") return;
-  await new Promise((resolve) => {
-    let done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      pc.removeEventListener("icegatheringstatechange", check);
-      clearTimeout(timer);
-      resolve();
-    }
-    function check() {
-      if (pc.iceGatheringState === "complete") finish();
-    }
-    pc.addEventListener("icegatheringstatechange", check);
-    // Don't block forever — proceed with whatever candidates were gathered so far.
-    // A stuck/misconfigured STUN or TURN server can otherwise hang this indefinitely.
-    const timer = setTimeout(() => {
-      console.warn("ICE gathering timed out after", timeoutMs, "ms — proceeding with candidates gathered so far");
-      finish();
-    }, timeoutMs);
-  });
-}
 
-function renderQR(elementId, bytes) {
-  const el = document.getElementById(elementId);
-  el.innerHTML = "";
-  return new Promise((resolve, reject) => {
-    const segments = [{ data: Array.from(bytes), mode: "byte" }];
-    QRCode.toDataURL(segments, { errorCorrectionLevel: "L", margin: 1, scale: 6 }, (err, url) => {
-      if (err) { reject(err); return; }
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = "QR code";
-      el.appendChild(img);
-      resolve();
-    });
-  });
-}
-
-// ============================================================
 // SDP schema codec — compact binary encoding of only the fields that vary
-// between sessions (ufrag/pwd, fingerprint, candidates, codecs). Used as a
-// pre-compaction step before gzip: shrinks a ~1.5-3KB SDP down to a couple
-// hundred bytes by throwing away everything reconstructible from a fixed
-// template, rather than relying on gzip to find redundancy in the raw text.
-//
-// Scope/limitations (matters for real interop, so it's documented here):
-//  - Preserves: ufrag/pwd, DTLS fingerprint + algo, setup role, per-media
-//    direction/mid, all negotiated codecs+clock+channels+apt (verified
-//    against a real captured Chrome offer — all 8 codecs round-trip,
-//    including red's fmtp→opus mapping, synthesized for free on decode),
-//    and ICE candidates (host/srflx/prflx/relay, IPv4/IPv6, UDP/TCP).
-//  - Does NOT preserve: extmap (RTP header extensions — abs-send-time,
-//    transport-wide-cc), msid/ssrc, rtcp-fb lines, or TCP candidates'
-//    tcptype attribute. These affect bandwidth-estimation quality and
-//    packet-loss recovery for video, not basic connectivity — browsers
-//    still connect and exchange media without them.
-//  - Assumes one candidate "component" (works fine with rtcp-mux, which
-//    this app always uses).
-// ============================================================
+// per session (ufrag/pwd, fingerprint, candidates, codecs), reconstructed
+// against a fixed template. Preserves codecs/candidates/fingerprint; drops
+// extmap/msid/ssrc/rtcp-fb/tcptype (quality/recovery hints, not required
+// for basic connectivity). Assumes one candidate component (rtcp-mux).
 const SDP_CODECS = [
   { name: "opus", clock: 48000, channels: 2 },
   { name: "VP8", clock: 90000 },
@@ -787,6 +708,1810 @@ class SdpReader {
   }
   bytesRaw(n) { const out = this.bytes.slice(this.i, this.i + n); this.i += n; return out; }
   str8() { const len = this.u8(); const buf = this.bytesRaw(len); return new TextDecoder().decode(buf); }
+}
+
+// Raw-bytes gzip (schema-encoded output is already binary, not text)
+
+const compressionSupported = ("CompressionStream" in window) && ("DecompressionStream" in window);
+
+// Schema-encode first (see codec doc comment above). Gzip is NOT applied on
+// top of it — that output is already dense binary with no repeated patterns
+// to exploit, so gzip's header is pure overhead (verified: grows 142→165
+// bytes). Gzip still applies to the JSON fallback, where it genuinely helps.
+
+// Un-gzip if needed, then distinguish schema-encoded bytes from the plain-JSON
+// fallback by checking for a leading '{' (0x7B) — JSON always starts with
+// that; the schema encoding's first byte is a small flags value that never is.
+
+// RTCSessionDescription's type/sdp are prototype getters, not own enumerable
+// properties — JSON.stringify() on the object directly can silently produce
+// "{}" in some browser engines. Always convert to a plain object first.
+
+// Shared camera-scanning logic (single canvas/video reused by both
+// broadcaster and listener manual flows — only one scans at a time)
+let manualScanStream = null;
+let manualScanning = false;
+const manualScanCanvas = document.getElementById("scanCanvas");
+
+// ============================================================
+// Broadcast mode
+// ============================================================
+const bcStatusEl = document.getElementById("bcStatus");
+const bcStatusText = document.getElementById("bcStatusText");
+const bcDot = bcStatusEl.querySelector(".dot");
+const bcStartBtn = document.getElementById("bcStartBtn");
+const listenersEl = document.getElementById("listeners");
+const deviceNameInput = document.getElementById("deviceName");
+
+const NAME_KEY = "micStreamDeviceName";
+deviceNameInput.value = localStorage.getItem(NAME_KEY) || defaultDeviceName();
+deviceNameInput.addEventListener("change", () => {
+  localStorage.setItem(NAME_KEY, deviceNameInput.value.trim());
+});
+
+function defaultDeviceName() {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  if (/Android/.test(ua)) return "Android device";
+  if (/Mac/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows PC";
+  if (/Linux/.test(ua)) return "Linux device";
+  return "My device";
+}
+
+let bcLocalStream = null;
+let bcWs = null;
+let manualBcPc = null; // used only when signalingMethod === "manual"
+const bcPeers = new Map(); // listenerId -> RTCPeerConnection
+
+// ---------- Voice-activated sending (VOX) ----------
+// Gates the MAIN broadcast audio (not push-to-talk) using the same replaceTrack
+// trick as everything else here: while "closed", the sender transmits nothing
+// at all, not just muted silence. Works uniformly across relay mode (possibly
+// multiple listener senders) and manual mode (one sender), via this shared map.
+const mainAudioSenders = new Map(); // key ("manual" or listener id) -> RTCRtpSender
+
+const VOX_HOLD_MS = 1500; // keep sending this long after level drops, to avoid rapid chatter
+
+let voxThresholdRms = 0.02; // default until a listener sends its own preference
+let voxEnabled = false;
+let voxAudioContext = null;
+let voxAnalyser = null;
+let voxSource = null;
+let voxRafId = null;
+let voxGateOpen = true;
+let voxLastAboveThresholdAt = 0;
+
+function voxApplyGate(open) {
+  if (open === voxGateOpen) return;
+  voxGateOpen = open;
+  const micTrack = bcLocalStream ? bcLocalStream.getAudioTracks()[0] : null;
+  mainAudioSenders.forEach((sender) => {
+    sender.replaceTrack(open ? micTrack : null).catch(() => {});
+  });
+  document.getElementById("voxStatus").textContent = voxEnabled
+    ? (open ? "🎙️ Voice detected — sending" : "🔇 Quiet — muted (saving bandwidth)")
+    : "";
+}
+
+function voxTick() {
+  if (!voxEnabled || !voxAnalyser) return;
+  const data = new Uint8Array(voxAnalyser.fftSize);
+  voxAnalyser.getByteTimeDomainData(data);
+  let sumSquares = 0;
+  for (let i = 0; i < data.length; i++) {
+    const norm = (data[i] - 128) / 128;
+    sumSquares += norm * norm;
+  }
+  const rms = Math.sqrt(sumSquares / data.length);
+  const now = Date.now();
+  if (rms > voxThresholdRms) {
+    voxLastAboveThresholdAt = now;
+    if (!voxGateOpen) voxApplyGate(true);
+  } else if (voxGateOpen && now - voxLastAboveThresholdAt > VOX_HOLD_MS) {
+    voxApplyGate(false);
+  }
+  voxRafId = requestAnimationFrame(voxTick);
+}
+
+function startVox(stream) {
+  stopVox();
+  if (!stream || stream.getAudioTracks().length === 0) return;
+  try {
+    voxAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    voxSource = voxAudioContext.createMediaStreamSource(stream);
+    voxAnalyser = voxAudioContext.createAnalyser();
+    voxAnalyser.fftSize = 512;
+    voxSource.connect(voxAnalyser);
+    voxGateOpen = true; // start open — assume speech until proven quiet, so we don't clip the start of a sound
+    voxLastAboveThresholdAt = Date.now();
+    document.getElementById("voxStatus").textContent = "🎙️ Voice detected — sending";
+    voxTick();
+  } catch (err) {
+    console.warn("VOX setup failed:", err.name, err.message);
+  }
+}
+
+function stopVox() {
+  if (voxRafId) cancelAnimationFrame(voxRafId);
+  voxRafId = null;
+  if (voxSource) { try { voxSource.disconnect(); } catch {} voxSource = null; }
+  if (voxAudioContext) { try { voxAudioContext.close(); } catch {} voxAudioContext = null; }
+  voxAnalyser = null;
+  if (!voxGateOpen) voxApplyGate(true); // always leave senders in the "sending" state when VOX is off
+  voxGateOpen = true;
+  document.getElementById("voxStatus").textContent = "";
+}
+
+// Driven entirely by config messages from the listener (over the control data
+// channel in manual mode, or the WebSocket in relay mode) — there's no local
+// broadcaster-side control for this anymore.
+function applyVoxConfig(enabled, threshold) {
+  if (typeof threshold === "number" && threshold > 0) voxThresholdRms = threshold;
+  voxEnabled = enabled;
+  if (voxEnabled && bcLocalStream) startVox(bcLocalStream);
+  else stopVox();
+}
+
+function bcSetStatus(text, cls) {
+  bcStatusText.textContent = text;
+  bcStatusEl.className = cls || "";
+  bcDot.className = "dot" + (cls === "live" ? " live" : "");
+}
+
+// ---------- Broadcaster per-listener connection state machine ----------
+// key is "manual" or a relay listener id — the same identity scheme already
+// used elsewhere (data channels, video state, retry timers). One function
+// serves both "only one, give detailed status" (manual) and "many, just
+// keep the count honest" (relay).
+const bcListenerState = new Map(); // key -> "connecting" | "live" | "lost"
+
+function setBcListenerState(key, state, message) {
+  bcListenerState.set(key, state);
+  renderBcListenerState(key, message);
+}
+
+function clearBcListenerState(key) {
+  bcListenerState.delete(key);
+  renderListenerCount();
+}
+
+function renderBcListenerState(key, message) {
+  if (key === "manual") {
+    const state = bcListenerState.get(key);
+    if (state === "connecting") bcSetStatus(message || "Connecting...", "live");
+    else if (state === "live") bcSetStatus(message || "Listener connected", "live");
+    else if (state === "lost") bcSetStatus(message || "Listener disconnected — they'll need to scan a new QR to reconnect", "error");
+    listenersEl.textContent = state === "live" ? "1 listener connected" : "No listeners connected yet";
+  } else {
+    // Relay mode: potentially many simultaneous listeners, so no per-listener
+    // status text — the broadcaster's own bcStatusText stays about signaling
+    // health (bcConnectSignaling/bcScheduleReconnect), not any one listener.
+    renderListenerCount();
+  }
+}
+
+function renderListenerCount() {
+  let n = 0;
+  bcListenerState.forEach((state, key) => { if (key !== "manual" && state === "live") n++; });
+  listenersEl.textContent = n === 0 ? "No listeners connected yet" : `${n} listener(s) connected`;
+}
+
+// Primes camera permission during a real user gesture (tapping "Start
+// Broadcasting"), since video-on-demand later calls getUserMedia() from a
+// remote data-channel handler — not a user gesture — which some browsers
+// silently block on first use. Not awaited; self-contained try/catch, so a
+// denial or missing camera just means video-on-demand fails gracefully
+// later, without affecting the audio broadcast.
+function primeVideoPermission() {
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+    .catch((err) => {
+      console.warn("Video permission not granted at broadcast start — video-on-demand may fail later:", err.name, err.message);
+    });
+}
+
+// Shared by both signaling modes: capture the mic, prime video permission,
+// and update the (mode-agnostic) parts of the UI. Returns false on denial —
+// callers should just return early in that case, everything's already
+// handled here (status message, re-enabling the button).
+async function bcCaptureMicAndPrepare() {
+  bcStartBtn.disabled = true;
+  deviceNameInput.disabled = true;
+  iceServers = buildIceServers();
+  try {
+    bcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch (err) {
+    bcSetStatus("Mic access denied: " + err.message, "error");
+    bcStartBtn.disabled = false;
+    deviceNameInput.disabled = false;
+    return false;
+  }
+  primeVideoPermission();
+  showStatusNotification("sending");
+  bcStartBtn.textContent = "Stop Broadcasting";
+  bcStartBtn.disabled = false;
+  return true;
+}
+
+let bcShouldStayConnected = false;
+let bcReconnectAttempt = 0;
+let bcReconnectTimer = null;
+let bcLastAddr = null;
+
+function bcScheduleReconnect(immediate) {
+  if (!bcShouldStayConnected) return;
+  clearTimeout(bcReconnectTimer);
+  const delay = immediate ? 250 : Math.min(500 * 2 ** bcReconnectAttempt, 5000);
+  bcReconnectAttempt++;
+  bcSetStatus(`Signaling server disconnected — reconnecting in ${Math.round(delay / 1000)}s...`, "error");
+  bcReconnectTimer = setTimeout(() => {
+    if (bcShouldStayConnected && bcLastAddr) bcConnectSignaling(bcLastAddr);
+  }, delay);
+}
+
+async function bcStart() {
+  const addr = getServerAddress();
+  if (!addr) {
+    bcSetStatus("Enter the relay server address above first", "error");
+    return;
+  }
+  if (!(await bcCaptureMicAndPrepare())) return;
+  bcSetStatus("Mic captured. Waiting for listeners...", "live");
+  bcShouldStayConnected = true;
+  bcReconnectAttempt = 0;
+  bcConnectSignaling(addr);
+}
+
+function bcStop() {
+  bcShouldStayConnected = false;
+  clearTimeout(bcReconnectTimer);
+  if (bcWs) { bcWs.close(); bcWs = null; }
+  bcPeers.forEach((pc) => pc.close());
+  bcPeers.clear();
+  if (manualBcPc) { manualBcPc.close(); manualBcPc = null; }
+  restartRetryTimers.forEach((timer) => clearTimeout(timer));
+  restartRetryTimers.clear();
+  bcVideoState.forEach((state) => state.stream.getTracks().forEach((t) => t.stop()));
+  bcVideoState.clear();
+  bcControlChannels.clear();
+  bcListenerState.clear();
+  stopVox();
+  voxEnabled = false;
+  mainAudioSenders.clear();
+  document.getElementById("manualBcFlow").classList.add("hidden");
+  document.getElementById("manualBcOfferStep").classList.add("hidden");
+  document.getElementById("manualBcAnswerStep").classList.add("hidden");
+  document.getElementById("manualBcPasteText").value = "";
+  if (bcLocalStream) { bcLocalStream.getTracks().forEach((t) => t.stop()); bcLocalStream = null; }
+  document.getElementById("bcIncomingAudio").srcObject = null;
+  document.getElementById("talkbackIncoming").textContent = "";
+  renderListenerCount();
+  bcSetStatus("Not started", "");
+  bcStartBtn.textContent = "Start Broadcasting Mic";
+  bcStartBtn.disabled = false;
+  deviceNameInput.disabled = false;
+}
+
+function bcConnectSignaling(addr) {
+  bcLastAddr = addr;
+  const token = getAccessToken();
+  bcWs = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
+  const name = deviceNameInput.value.trim() || defaultDeviceName();
+
+  bcWs.onopen = () => {
+    if (bcReconnectAttempt > 0) bcSetStatus("Reconnected to signaling server", "live");
+    bcReconnectAttempt = 0;
+    bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name }));
+    hideOpenServerPageBtn();
+  };
+
+  bcWs.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === "error") {
+      bcSetStatus(msg.message, "error");
+      bcWs.close();
+    } else if (msg.type === "welcome") {
+      if (Array.isArray(msg.iceServers) && msg.iceServers.length) {
+        serverIceServers = msg.iceServers;
+        iceServers = buildIceServers();
+      }
+    } else if (msg.type === "listener-join") {
+      await bcCreatePeerForListener(msg.id);
+    } else if (msg.type === "listener-leave") {
+      const pc = bcPeers.get(msg.id);
+      if (pc) pc.close();
+      bcPeers.delete(msg.id);
+      mainAudioSenders.delete(msg.id);
+      clearRestartRetry(msg.id);
+      const videoState = bcVideoState.get(msg.id);
+      if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
+      bcVideoState.delete(msg.id);
+      bcControlChannels.delete(msg.id);
+      clearBcListenerState(msg.id);
+    } else if (msg.type === "answer") {
+      const pc = bcPeers.get(msg.id);
+      if (pc) await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+    } else if (msg.type === "ice") {
+      const pc = bcPeers.get(msg.id);
+      if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate);
+    } else if (msg.type === "vox-config") {
+      applyVoxConfig(!!msg.enabled, msg.threshold);
+    }
+  };
+
+  bcWs.onclose = () => {
+    maybeShowOpenServerPageBtn();
+    if (bcLocalStream) bcScheduleReconnect(false);
+  };
+}
+
+// ---------- ICE restart with retry ----------
+// A single restartIce() attempt right as connectionState flips to
+// "disconnected" often fires too early — the new network path (e.g.
+// cellular) isn't routable yet — leaving the connection stuck after one
+// failed shot. This retries a few times with a delay, stopping once it
+// actually recovers.
+const restartRetryTimers = new Map(); // key -> timeout id
+
+function attemptRestartWithRetry(pc, key, { maxAttempts = 5, delayMs = 3000 } = {}) {
+  clearRestartRetry(key);
+  let attempts = 0;
+  function tryRestart() {
+    if (pc.connectionState !== "disconnected") return; // already recovered, or moved on to failed/closed
+    attempts++;
+    console.warn(`ICE restart attempt ${attempts}/${maxAttempts} for`, key);
+    try { pc.restartIce(); } catch (err) { console.warn("restartIce failed:", err.name, err.message); }
+    if (attempts < maxAttempts) {
+      restartRetryTimers.set(key, setTimeout(tryRestart, delayMs));
+    } else {
+      restartRetryTimers.delete(key);
+    }
+  }
+  tryRestart();
+}
+function clearRestartRetry(key) {
+  const timer = restartRetryTimers.get(key);
+  if (timer) { clearTimeout(timer); restartRetryTimers.delete(key); }
+}
+
+// Shared by both signaling modes: the actual WebRTC mechanics of a
+// broadcaster-side connection are identical regardless of how the offer/answer
+// gets exchanged — only that exchange itself (WS vs QR-then-datachannel)
+// differs, and stays in each caller. `key` is "manual" for the single manual
+// connection, or the listener id for a relay-mode connection.
+function createBcPeerConnection(key) {
+  const pc = new RTCPeerConnection({ iceServers });
+
+  // Data channel for vox-config/video/ping — same generic setup regardless of
+  // mode, so these no longer depend on the relay server recognizing new
+  // message types. The initial offer/answer/ICE exchange itself stays on
+  // whatever transport each mode actually uses for that.
+  setupBcControlChannel(pc.createDataChannel("control"), key);
+
+  pc.ontrack = (e) => {
+    document.getElementById("bcIncomingAudio").srcObject = e.streams[0];
+    const track = e.track;
+    const incomingEl = document.getElementById("talkbackIncoming");
+    track.onunmute = () => { incomingEl.textContent = "🔊 Listener is talking"; };
+    track.onmute = () => { incomingEl.textContent = ""; };
+  };
+
+  return pc;
+}
+
+async function bcCreatePeerForListener(id) {
+  const pc = createBcPeerConnection(id);
+  bcPeers.set(id, pc);
+  setBcListenerState(id, "connecting");
+
+  // Unified path for the very first offer AND any later renegotiation/restart
+  // offer (e.g. after restartIce()) — both just fire this same event, so there's
+  // no separate manual createOffer() call needed elsewhere.
+  pc.onnegotiationneeded = async () => {
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      bcWs.send(JSON.stringify({ type: "offer", id, sdp: offer.sdp }));
+    } catch (err) {
+      console.warn("Renegotiation (offer) failed for listener", id, err.name, err.message);
+    }
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      bcWs.send(JSON.stringify({ type: "ice", id, candidate: e.candidate }));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") {
+      setBcListenerState(id, "live");
+      clearRestartRetry(id);
+    } else if (pc.connectionState === "disconnected") {
+      // Transient — often a network change (Wi-Fi ↔ cellular) rather than a real
+      // hangup. Try to recover the SAME connection before giving up on it.
+      // Deliberately not its own state transition (stays "live"), same
+      // reasoning as the listener side: don't drop the count for something
+      // that usually self-heals within a few seconds.
+      attemptRestartWithRetry(pc, id);
+    } else if (["failed", "closed"].includes(pc.connectionState)) {
+      // Retries exhausted (or the browser gave up on its own) — this listener
+      // is genuinely gone. Clean it up properly rather than leaving a dead
+      // entry sitting in every tracking map forever.
+      console.warn("Listener", id, "connection failed permanently — cleaning up");
+      clearRestartRetry(id);
+      pc.close();
+      bcPeers.delete(id);
+      mainAudioSenders.delete(id);
+      const videoState = bcVideoState.get(id);
+      if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
+      bcVideoState.delete(id);
+      bcControlChannels.delete(id);
+      clearBcListenerState(id);
+    }
+  };
+
+  bcLocalStream.getTracks().forEach((track) => {
+    const sender = pc.addTrack(track, bcLocalStream);
+    mainAudioSenders.set(id, sender);
+  });
+}
+
+// ---------- Control data channel + video-on-demand: shared by BOTH signaling
+// modes, keyed "manual" or by listener id. Using a data channel (rather than
+// relay-server WS messages) means vox-config/video/restart don't depend on
+// the relay server recognizing any message type — only on the WebRTC
+// connection itself, which exists the same way in both modes.
+const bcControlChannels = new Map(); // id -> RTCDataChannel
+const bcVideoState = new Map(); // id -> { stream, sender }
+
+function getBcPc(id) {
+  return id === "manual" ? manualBcPc : bcPeers.get(id);
+}
+
+const VIDEO_RESOLUTION_PRESETS = {
+  low: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } },
+  medium: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } },
+  high: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24 } },
+};
+
+function getCameraStream(resolution) {
+  return navigator.mediaDevices.getUserMedia({ video: VIDEO_RESOLUTION_PRESETS[resolution] || VIDEO_RESOLUTION_PRESETS.medium });
+}
+
+async function bcHandleVideoRequest(id, show, resolution) {
+  const pcForId = getBcPc(id);
+  if (!pcForId) return;
+  const incomingEl = document.getElementById("talkbackIncoming");
+  const existing = bcVideoState.get(id);
+  if (show) {
+    if (existing) return; // already sending
+    let stream;
+    try {
+      stream = await getCameraStream(resolution);
+    } catch (err) {
+      console.warn("Camera unavailable for video request:", err.name, err.message);
+      const channel = bcControlChannels.get(id);
+      if (channel && channel.readyState === "open") {
+        channel.send(JSON.stringify({ type: "video-unavailable" }));
+      }
+      return;
+    }
+    const track = stream.getVideoTracks()[0];
+    const sender = pcForId.addTrack(track, stream);
+    bcVideoState.set(id, { stream, sender });
+    incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
+    // Adding a track fires 'negotiationneeded' automatically — handled below.
+  } else {
+    if (!existing) return;
+    existing.stream.getTracks().forEach((t) => t.stop()); // actually stops the camera hardware
+    pcForId.removeTrack(existing.sender);
+    bcVideoState.delete(id);
+    incomingEl.textContent = "";
+    // Removing a track also fires 'negotiationneeded' automatically.
+  }
+}
+
+// Switching resolution while video is already flowing swaps the underlying
+// MediaStreamTrack via replaceTrack() on the same sender — this does NOT
+// change the transceiver's direction or m-line, so no renegotiation round-trip
+// is needed at all (unlike turning video fully on/off).
+async function bcSwitchVideoResolution(id, resolution) {
+  const existing = bcVideoState.get(id);
+  if (!existing) return; // video not currently active — nothing to switch live
+  const incomingEl = document.getElementById("talkbackIncoming");
+  try {
+    const newStream = await getCameraStream(resolution);
+    const newTrack = newStream.getVideoTracks()[0];
+    const oldStream = existing.stream;
+    await existing.sender.replaceTrack(newTrack);
+    existing.stream = newStream;
+    oldStream.getTracks().forEach((t) => t.stop());
+    incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
+  } catch (err) {
+    console.warn("Resolution switch failed:", err.name, err.message);
+  }
+}
+
+function setupBcControlChannel(channel, id) {
+  bcControlChannels.set(id, channel);
+  channel.onclose = () => { bcControlChannels.delete(id); };
+  channel.onmessage = async (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === "vox-config") {
+      applyVoxConfig(!!msg.enabled, msg.threshold);
+    } else if (msg.type === "video-request") {
+      await bcHandleVideoRequest(id, !!msg.show, msg.resolution || "medium");
+    } else if (msg.type === "video-resolution") {
+      await bcSwitchVideoResolution(id, msg.resolution);
+    } else if (msg.type === "answer") {
+      // Renegotiation answer, in response to an offer we sent below.
+      const pcForId = getBcPc(id);
+      if (pcForId) await pcForId.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+    }
+  };
+}
+
+async function bcStartManual() {
+  if (!(await bcCaptureMicAndPrepare())) return;
+  setBcListenerState("manual", "connecting", "Generating offer (this can take a few seconds)...");
+  document.getElementById("manualBcFlow").classList.remove("hidden");
+  // Don't reveal the QR/text step yet — it would show empty containers while the
+  // offer + ICE gathering are still in progress. Show it only once populated below.
+  document.getElementById("manualBcOfferStep").classList.add("hidden");
+  document.getElementById("manualBcAnswerStep").classList.add("hidden");
+
+  manualBcPc = createBcPeerConnection("manual");
+  bcLocalStream.getTracks().forEach((track) => {
+    const sender = manualBcPc.addTrack(track, bcLocalStream);
+    mainAudioSenders.set("manual", sender);
+  });
+
+  manualBcPc.onnegotiationneeded = async () => {
+    // Fires automatically whenever a track is added/removed after the initial
+    // connection (e.g. video toggled on/off) — never fires for the very first
+    // offer since we create that manually below before any listener is negotiating.
+    const channel = bcControlChannels.get("manual");
+    if (!channel || channel.readyState !== "open") return;
+    try {
+      const offer = await manualBcPc.createOffer();
+      await manualBcPc.setLocalDescription(offer);
+      await waitForIceGathering(manualBcPc);
+      channel.send(JSON.stringify({ type: "offer", sdp: manualBcPc.localDescription.sdp }));
+    } catch (err) {
+      console.error("Renegotiation (offer) failed:", err.name, err.message);
+    }
+  };
+
+  manualBcPc.onconnectionstatechange = () => {
+    if (manualBcPc.connectionState === "connected") {
+      setBcListenerState("manual", "live");
+    } else if (manualBcPc.connectionState === "disconnected") {
+      // Transient — ICE consent-freshness checks can self-heal without any
+      // action from us. Manual mode has no active recovery by design (keeps
+      // the data channel scoped to VOX/video/ping, not reconnect traffic) —
+      // if it doesn't recover, the listener needs a fresh QR. Not a state
+      // transition (stays "live"), same reasoning as the listener side.
+      bcSetStatus("⚠️ Connection interrupted — waiting to see if it recovers...", "reconnecting");
+    } else if (["failed", "closed"].includes(manualBcPc.connectionState)) {
+      setBcListenerState("manual", "lost");
+    }
+  };
+
+  const offer = await manualBcPc.createOffer();
+  await manualBcPc.setLocalDescription(offer);
+  await waitForIceGathering(manualBcPc);
+
+  const offerBytes = await encodeToBytes(toPlainDescription(manualBcPc.localDescription));
+  document.getElementById("manualBcOfferText").value = toBackupText(toPlainDescription(manualBcPc.localDescription));
+  document.getElementById("manualBcOfferStep").classList.remove("hidden");
+  bcSetStatus("Offer ready — show the QR to the listener", "live");
+  try {
+    await renderQR("manualBcQrImg", offerBytes);
+  } catch (e) {
+    bcSetStatus("Offer too large for QR — use the text backup below.", "error");
+  }
+}
+
+document.getElementById("manualBcNextBtn").addEventListener("click", () => {
+  document.getElementById("manualBcOfferStep").classList.add("hidden");
+  document.getElementById("manualBcAnswerStep").classList.remove("hidden");
+});
+
+document.getElementById("manualBcCopyOfferBtn").addEventListener("click", (e) => {
+  copyToClipboard(document.getElementById("manualBcOfferText").value, e.target);
+});
+
+document.getElementById("manualBcScanBtn").addEventListener("click", () => {
+  scanQR(document.getElementById("manualBcVideo"), document.getElementById("manualBcSwitchCamBtn"), async (bytes) => {
+    const answer = await decodeFromBytes(bytes);
+    await manualBcPc.setRemoteDescription(answer);
+    bcSetStatus("Answer applied. Connecting...", "live");
+  });
+});
+
+document.getElementById("manualBcPasteBtn").addEventListener("click", async () => {
+  const text = document.getElementById("manualBcPasteText").value.trim();
+  if (!text) return;
+  const bytes = await backupTextToBytes(text);
+  const answer = await decodeFromBytes(bytes);
+  await manualBcPc.setRemoteDescription(answer);
+  bcSetStatus("Answer applied. Connecting...", "live");
+});
+
+bcStartBtn.addEventListener("click", () => {
+  if (bcLocalStream) { bcStop(); return; }
+  requestWakeLock();
+  if (signalingMethod === "manual") bcStartManual();
+  else bcStart();
+});
+
+// ============================================================
+// Listen mode
+// ============================================================
+const connectBtn = document.getElementById("connectBtn");
+const installBtn = document.getElementById("installBtn");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("statusText");
+const dot = statusEl.querySelector(".dot");
+const audioEl = document.getElementById("audio");
+const wakeToggle = document.getElementById("wakeToggle");
+const meterCanvas = document.getElementById("meterCanvas");
+const meterCtx = meterCanvas.getContext("2d");
+const meterDbLabel = document.getElementById("meterDb");
+const meterPeakLabel = document.getElementById("meterPeakLabel");
+const alertToggle = document.getElementById("alertToggle");
+
+// ---------- Listener-controlled VOX (voice-activated sending) config ----------
+// The listener owns this setting (enabled + sensitivity), persisted locally,
+// and pushes it to the broadcaster over whichever signaling channel is active.
+const LISTENER_VOX_ENABLED_KEY = "micStreamVoxEnabled";
+const LISTENER_VOX_THRESHOLD_KEY = "micStreamVoxThreshold";
+const listenerVoxToggle = document.getElementById("listenerVoxToggle");
+const voxThresholdSlider = document.getElementById("voxThresholdSlider");
+
+const savedVoxEnabled = localStorage.getItem(LISTENER_VOX_ENABLED_KEY);
+if (savedVoxEnabled !== null) listenerVoxToggle.checked = savedVoxEnabled === "true";
+const savedVoxThreshold = localStorage.getItem(LISTENER_VOX_THRESHOLD_KEY);
+if (savedVoxThreshold !== null) voxThresholdSlider.value = savedVoxThreshold;
+
+function sendVoxConfig() {
+  const payload = JSON.stringify({
+    type: "vox-config",
+    enabled: listenerVoxToggle.checked,
+    threshold: parseFloat(voxThresholdSlider.value),
+  });
+  if (manualLsControlChannel && manualLsControlChannel.readyState === "open") {
+    manualLsControlChannel.send(payload);
+  }
+  // Relay mode: requires the relay server to forward this message type through
+  // to the broadcaster — works out of the box if the server relays unrecognized
+  // message types by id, but depends on that server's own implementation.
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(payload);
+  }
+}
+
+listenerVoxToggle.addEventListener("change", () => {
+  localStorage.setItem(LISTENER_VOX_ENABLED_KEY, listenerVoxToggle.checked);
+  sendVoxConfig();
+});
+voxThresholdSlider.addEventListener("input", () => {
+  localStorage.setItem(LISTENER_VOX_THRESHOLD_KEY, voxThresholdSlider.value);
+  sendVoxConfig();
+});
+
+const pickerWrap = document.getElementById("pickerWrap");
+const broadcasterListEl = document.getElementById("broadcasterList");
+const refreshBtn = document.getElementById("refreshBtn");
+const pushToTalkBtn = document.getElementById("pushToTalkBtn");
+const talkbackStatusEl = document.getElementById("talkbackStatus");
+
+// ---------- Push-to-talk (listener → broadcaster) ----------
+// The mic track is added up front (before the answer), so the initial
+// negotiation already marks this m-line sendrecv — push-to-talk is then just
+// replaceTrack(track)/replaceTrack(null), no renegotiation. replaceTrack(null)
+// stops transmission entirely (near-zero bandwidth), not just mutes it.
+let talkbackStream = null;
+let talkbackTrack = null;
+let talkbackSender = null;
+
+async function setupTalkback(pc) {
+  if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
+  talkbackSender = null;
+  try {
+    talkbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    talkbackTrack = talkbackStream.getAudioTracks()[0];
+    talkbackSender = pc.addTrack(talkbackTrack, talkbackStream);
+    await talkbackSender.replaceTrack(null); // start silent — nothing sent until pressed
+    pushToTalkBtn.classList.remove("hidden");
+    talkbackStatusEl.textContent = "Push-to-talk ready";
+  } catch (err) {
+    console.warn("Push-to-talk mic unavailable:", err.name, err.message);
+    pushToTalkBtn.classList.add("hidden");
+    talkbackStatusEl.textContent = "";
+  }
+}
+
+function teardownTalkback() {
+  if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
+  talkbackTrack = null;
+  talkbackSender = null;
+  pushToTalkBtn.classList.remove("active");
+  pushToTalkBtn.classList.add("hidden");
+  talkbackStatusEl.textContent = "";
+}
+
+async function talkStart() {
+  if (!talkbackSender || !talkbackTrack) return;
+  await talkbackSender.replaceTrack(talkbackTrack);
+  pushToTalkBtn.classList.add("active");
+  talkbackStatusEl.textContent = "🔴 Talking...";
+}
+
+async function talkStop() {
+  if (!talkbackSender) return;
+  await talkbackSender.replaceTrack(null);
+  pushToTalkBtn.classList.remove("active");
+  talkbackStatusEl.textContent = "Push-to-talk ready";
+}
+
+pushToTalkBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); talkStart(); });
+pushToTalkBtn.addEventListener("pointerup", talkStop);
+pushToTalkBtn.addEventListener("pointercancel", talkStop);
+pushToTalkBtn.addEventListener("pointerleave", talkStop);
+
+// ---------- Video on demand (listener → broadcaster), manual mode only ----------
+// The data channel is opened by the broadcaster as part of the very first offer,
+// so it arrives here via ondatachannel once setRemoteDescription() is applied.
+// Everything after the first QR — video on/off requests, and the renegotiation
+// they trigger — flows over this channel instead of needing another QR scan.
+let manualLsControlChannel = null;
+let videoRequested = false;
+const showVideoBtn = document.getElementById("showVideoBtn");
+const remoteVideoEl = document.getElementById("remoteVideoEl");
+const videoResolutionSelect = document.getElementById("videoResolutionSelect");
+
+function setupLsControlChannel(channel) {
+  manualLsControlChannel = channel;
+  channel.onopen = () => {
+    showVideoBtn.disabled = false;
+    sendVoxConfig();
+  };
+  channel.onclose = () => {
+    showVideoBtn.disabled = true;
+  };
+  channel.onmessage = async (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === "offer") {
+      // Renegotiation offer from the broadcaster (e.g. video track added/removed).
+      await lsPc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+      const answer = await lsPc.createAnswer();
+      await lsPc.setLocalDescription(answer);
+      channel.send(JSON.stringify({ type: "answer", sdp: lsPc.localDescription.sdp }));
+    } else if (msg.type === "video-unavailable") {
+      videoRequested = false;
+      showVideoBtn.textContent = "📹 Show Video";
+      talkbackStatusEl.textContent = "Broadcaster's camera is unavailable";
+    }
+  };
+}
+
+showVideoBtn.addEventListener("click", () => {
+  if (!manualLsControlChannel || manualLsControlChannel.readyState !== "open") return;
+  videoRequested = !videoRequested;
+  manualLsControlChannel.send(JSON.stringify({
+    type: "video-request",
+    show: videoRequested,
+    resolution: videoResolutionSelect.value,
+  }));
+  showVideoBtn.textContent = videoRequested ? "📹 Hide Video" : "📹 Show Video";
+  if (!videoRequested) remoteVideoEl.classList.add("hidden"); // hide immediately; showing waits for the actual track
+});
+
+videoResolutionSelect.addEventListener("change", () => {
+  // If video is already showing, switch it live (no renegotiation needed — see
+  // bcSwitchVideoResolution). If not currently showing, this just becomes the
+  // resolution used whenever Show Video is next pressed.
+  if (videoRequested && manualLsControlChannel && manualLsControlChannel.readyState === "open") {
+    manualLsControlChannel.send(JSON.stringify({ type: "video-resolution", resolution: videoResolutionSelect.value }));
+  }
+});
+
+let selectedBroadcasterId = null;
+let selectedBroadcasterName = null;
+let latestBroadcasterList = [];
+
+let ws = null;
+let lsPc = null; // the listener's single peer connection — shared by both signaling modes
+let wakeLock = null;
+let shouldStayConnected = false;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+
+let heartbeatInterval = null;
+let heartbeatWatchdog = null;
+let lastPongAt = 0;
+const HEARTBEAT_INTERVAL_MS = 4000;
+const HEARTBEAT_TIMEOUT_MS = 9000;
+
+let statsWatchdogInterval = null;
+let lastBytesReceived = -1;
+let staleStatsCount = 0;
+
+let meterAudioCtx = null;
+let meterSource = null;
+let meterAnalyser = null;
+let meterDataArray = null;
+let meterRAF = null;
+let meterPeakDb = -Infinity;
+let meterPeakHoldUntil = 0;
+let meterLastDrawTime = 0;
+let meterLastLitSegments = -1;
+let meterLastDbText = null;
+let meterLastPeakText = null;
+
+function setStatus(text, cls) {
+  statusText.textContent = text;
+  statusEl.className = cls || "";
+  dot.className = "dot" + (cls ? " " + cls : "");
+}
+
+function setupMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: "Live NiloPhone",
+    artist: selectedBroadcasterName || "NiloPhone",
+    album: "NiloPhone",
+    artwork: [
+      { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  });
+  navigator.mediaSession.setActionHandler("play", () => connect());
+  navigator.mediaSession.setActionHandler("pause", () => disconnect());
+  navigator.mediaSession.setActionHandler("stop", () => disconnect());
+}
+
+function setMediaPlaybackState(state) {
+  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = state;
+}
+
+let hasAlertedThisDrop = false;
+let alertLoopInterval = null;
+
+// Created once during a real user gesture (tapping Connect), reused for
+// every alert. A *fresh* AudioContext from inside playAlertTone() would be
+// the bug: that fires from an async event, not a gesture, and browsers can
+// silently start it "suspended" — no error, just no sound. A context
+// created during a click stays reliably unblocked even from later async use.
+let alertAudioCtx = null;
+
+function ensureAlertAudioContext() {
+  try {
+    if (!alertAudioCtx) {
+      alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (alertAudioCtx.state === "suspended") {
+      alertAudioCtx.resume().catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Could not prepare alert audio context:", err.message);
+  }
+}
+
+function playAlertTone() {
+  try {
+    if (!alertAudioCtx) ensureAlertAudioContext();
+    const ctx = alertAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const now = ctx.currentTime;
+    [880, 660].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = now + i * 0.22;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.35, start + 0.02);
+      gain.gain.linearRampToValueAtTime(0, start + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    });
+  } catch (err) {
+    console.warn("Alert tone failed:", err.message);
+  }
+}
+
+function triggerConnectionLostAlert() {
+  if (hasAlertedThisDrop || !alertToggle.checked) return;
+  hasAlertedThisDrop = true;
+  playAlertTone();
+  alertLoopInterval = setInterval(playAlertTone, 3000);
+  showStatusNotification("reconnecting", { audible: true });
+}
+
+function stopConnectionLostAlert() {
+  if (alertLoopInterval) clearInterval(alertLoopInterval);
+  alertLoopInterval = null;
+  hasAlertedThisDrop = false;
+}
+
+audioEl.addEventListener("playing", () => {
+  setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
+  setupMediaSession();
+  setMediaPlaybackState("playing");
+  showStatusNotification("live");
+  stopConnectionLostAlert();
+  startStatsWatchdog();
+});
+audioEl.addEventListener("pause", () => {
+  setMediaPlaybackState("paused");
+});
+
+var noSleep = new NoSleep();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  // Re-acquire for either session type — Android/iOS often auto-release the
+  // wake lock when a tab backgrounds, regardless of which mode was active.
+  if (shouldStayConnected || bcShouldStayConnected) requestWakeLock();
+  // The reconnect check below is listener-specific (lsPc, scheduleReconnect)
+  // — the broadcaster has its own separate WS reconnect, unrelated to tab
+  // visibility, so it doesn't belong here.
+  if (shouldStayConnected && (!lsPc || lsPc.connectionState === "failed" || lsPc.connectionState === "disconnected" || lsPc.connectionState === "closed")) {
+    scheduleReconnect(true);
+  }
+});
+
+function resizeMeterCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = meterCanvas.getBoundingClientRect();
+  meterCanvas.width = rect.width * dpr;
+  meterCanvas.height = rect.height * dpr;
+  meterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resizeMeterCanvas);
+
+function setupMeter(stream) {
+  teardownMeter();
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  meterAudioCtx = new AudioCtx();
+  meterSource = meterAudioCtx.createMediaStreamSource(stream);
+  meterAnalyser = meterAudioCtx.createAnalyser();
+  meterAnalyser.fftSize = 1024;
+  meterAnalyser.smoothingTimeConstant = 0.4;
+  meterDataArray = new Uint8Array(meterAnalyser.fftSize);
+  meterSource.connect(meterAnalyser);
+  resizeMeterCanvas();
+  meterPeakDb = -Infinity;
+  meterLastLitSegments = -1;
+  meterLastDbText = null;
+  meterLastPeakText = null;
+  drawMeter();
+}
+
+function teardownMeter() {
+  if (meterRAF) cancelAnimationFrame(meterRAF);
+  meterRAF = null;
+  if (meterSource) { try { meterSource.disconnect(); } catch {} meterSource = null; }
+  if (meterAudioCtx) { meterAudioCtx.close().catch(() => {}); meterAudioCtx = null; }
+  meterAnalyser = null;
+  clearMeterCanvas();
+  meterDbLabel.textContent = "-∞ dB";
+  meterPeakLabel.textContent = "peak: -∞ dB";
+}
+
+function clearMeterCanvas() {
+  const rect = meterCanvas.getBoundingClientRect();
+  meterCtx.clearRect(0, 0, rect.width, rect.height);
+  meterCtx.fillStyle = "#111";
+  meterCtx.fillRect(0, 0, rect.width, rect.height);
+}
+
+function drawMeter() {
+  meterRAF = requestAnimationFrame(drawMeter);
+  if (!meterAnalyser) return;
+
+  // A VU meter doesn't need 60fps to read cleanly — the human eye can't tell
+  // 15fps from 60fps here, but the RMS calc + full canvas redraw below is
+  // real per-frame work that otherwise runs continuously for the entire
+  // session (this loop only stops when disconnected). ~4x fewer actual
+  // updates for no perceptible difference.
+  const now = performance.now();
+  if (now - meterLastDrawTime < 66) return;
+  meterLastDrawTime = now;
+
+  meterAnalyser.getByteTimeDomainData(meterDataArray);
+  let sumSquares = 0;
+  for (let i = 0; i < meterDataArray.length; i++) {
+    const norm = (meterDataArray[i] - 128) / 128;
+    sumSquares += norm * norm;
+  }
+  const rms = Math.sqrt(sumSquares / meterDataArray.length);
+  const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+  const dbClamped = Math.max(db, -60);
+  const level = (dbClamped + 60) / 60;
+
+  if (db > meterPeakDb || now > meterPeakHoldUntil) {
+    if (db > meterPeakDb) {
+      meterPeakDb = db;
+      meterPeakHoldUntil = now + 1500;
+    }
+  }
+  if (now > meterPeakHoldUntil) meterPeakDb -= 0.5;
+
+  const segments = 28;
+  const litSegments = Math.round(level * segments);
+  const dbText = db === -Infinity ? "-∞ dB" : `${db.toFixed(1)} dB`;
+  const peakText = `peak: ${meterPeakDb === -Infinity ? "-∞" : meterPeakDb.toFixed(1)} dB`;
+
+  // Silence (VOX-gated or just a quiet room) is the common case for a baby
+  // monitor, and it renders identically frame after frame — same -∞ dB text,
+  // same zero lit segments. Comparing to what's actually on screen before
+  // touching the DOM/canvas avoids redoing that work for something no one
+  // would see change anyway.
+  if (dbText !== meterLastDbText) {
+    meterDbLabel.textContent = dbText;
+    meterLastDbText = dbText;
+  }
+  if (peakText !== meterLastPeakText) {
+    meterPeakLabel.textContent = peakText;
+    meterLastPeakText = peakText;
+  }
+  if (litSegments === meterLastLitSegments) return; // canvas would be pixel-identical — skip the redraw
+  meterLastLitSegments = litSegments;
+
+  const rect = meterCanvas.getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  meterCtx.clearRect(0, 0, w, h);
+  meterCtx.fillStyle = "#111";
+  meterCtx.fillRect(0, 0, w, h);
+
+  const gap = 3;
+  const segW = (w - gap * (segments - 1)) / segments;
+
+  for (let i = 0; i < segments; i++) {
+    const frac = i / segments;
+    let color;
+    if (frac < 0.6) color = "#16a34a";
+    else if (frac < 0.85) color = "#eab308";
+    else color = "#dc2626";
+
+    meterCtx.fillStyle = i < litSegments ? color : "#2a2a2a";
+    const x = i * (segW + gap);
+    meterCtx.fillRect(x, 0, segW, h);
+  }
+
+  if (meterPeakDb > -60) {
+    const peakLevel = Math.max(0, Math.min(1, (meterPeakDb + 60) / 60));
+    const peakX = peakLevel * w;
+    meterCtx.fillStyle = "#ffffff";
+    meterCtx.fillRect(Math.min(peakX, w - 2), 0, 2, h);
+  }
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "notification-stop") disconnect();
+  });
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  lastPongAt = Date.now();
+  heartbeatInterval = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatWatchdog = setInterval(() => {
+    if (Date.now() - lastPongAt > HEARTBEAT_TIMEOUT_MS) {
+      console.warn("Heartbeat timed out — signaling socket looks dead, forcing reconnect");
+      if (ws) ws.close();
+    }
+  }, 2000);
+}
+
+function stopHeartbeat() {
+  clearInterval(heartbeatInterval);
+  clearInterval(heartbeatWatchdog);
+  heartbeatInterval = null;
+  heartbeatWatchdog = null;
+}
+
+function getActivePc() {
+  return lsPc;
+}
+
+function startStatsWatchdog() {
+  stopStatsWatchdog();
+  lastBytesReceived = -1;
+  staleStatsCount = 0;
+  statsWatchdogInterval = setInterval(async () => {
+    const activePc = getActivePc();
+    if (!activePc || activePc.connectionState !== "connected") return;
+    try {
+      const stats = await activePc.getStats();
+      let bytesReceived = null;
+      stats.forEach((report) => {
+        if (report.type === "inbound-rtp" && report.kind === "audio") {
+          bytesReceived = report.bytesReceived;
+        }
+      });
+      if (bytesReceived === null) return;
+
+      if (bytesReceived === lastBytesReceived) {
+        staleStatsCount++;
+        if (staleStatsCount >= 2) {
+          // Flat bytes alone isn't proof of death — could be legitimate
+          // silence (VOX gating). Data channel readyState is our liveness
+          // signal: rides the same transport, and WebRTC's ICE layer already
+          // runs native keepalive underneath, so it's reliably accurate — no
+          // custom ping/pong needed. Only a real stall if it's not open too.
+          const channelStale = !manualLsControlChannel || manualLsControlChannel.readyState !== "open";
+
+          if (!channelStale) {
+            staleStatsCount = 0;
+            return;
+          }
+
+          if (signalingMethod === "manual") {
+            console.warn("Manual mode: audio stalled and data channel not open — connection appears lost");
+            staleStatsCount = 0;
+            setStatus("⚠️ Connection appears lost — ask the broadcaster to restart and scan a new QR", "error");
+            teardownMeter();
+            stopStatsWatchdog();
+            setMediaPlaybackState("none");
+            triggerConnectionLostAlert();
+            return;
+          }
+          console.warn("Audio track stalled and data channel not open — forcing reconnect");
+          staleStatsCount = 0;
+          scheduleReconnect(true);
+        }
+      } else {
+        staleStatsCount = 0;
+        lastBytesReceived = bytesReceived;
+      }
+    } catch {}
+  }, 3000);
+}
+
+function stopStatsWatchdog() {
+  clearInterval(statsWatchdogInterval);
+  statsWatchdogInterval = null;
+}
+
+function renderBroadcasterList(list) {
+  latestBroadcasterList = list;
+  broadcasterListEl.innerHTML = "";
+
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "broadcaster-empty";
+    empty.textContent = "No broadcasters found yet. Make sure one is running \"Start Broadcasting Mic\" on the same relay server.";
+    broadcasterListEl.appendChild(empty);
+    return;
+  }
+
+  list.forEach(({ id, name }) => {
+    const item = document.createElement("div");
+    item.className = "broadcaster-item";
+    const label = document.createElement("span");
+    label.textContent = name;
+    const btn = document.createElement("button");
+    btn.textContent = "Listen";
+    btn.addEventListener("click", () => chooseBroadcaster(id, name));
+    item.appendChild(label);
+    item.appendChild(btn);
+    broadcasterListEl.appendChild(item);
+  });
+}
+
+function showPicker() { pickerWrap.style.display = "block"; }
+function hidePicker() { pickerWrap.style.display = "none"; }
+
+const LAST_SESSION_KEYS = {
+  mode: "micStreamLastMode",
+  broadcasterId: "micStreamLastBroadcasterId",
+  broadcasterName: "micStreamLastBroadcasterName",
+};
+
+function chooseBroadcaster(id, name) {
+  selectedBroadcasterId = id;
+  selectedBroadcasterName = name;
+  localStorage.setItem(LAST_SESSION_KEYS.mode, "listen");
+  localStorage.setItem(LAST_SESSION_KEYS.broadcasterId, id);
+  localStorage.setItem(LAST_SESSION_KEYS.broadcasterName, name);
+  hidePicker();
+  setStatus(`Connecting to "${name}"...`, "");
+  ws.send(JSON.stringify({ type: "listen", broadcasterId: id }));
+  sendVoxConfig();
+}
+
+refreshBtn.addEventListener("click", () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "list-broadcasters" }));
+  }
+});
+
+// ---------- Listener connection state machine ----------
+// idle: not connected. connecting: signaling in progress, never live yet.
+// live: connected, audio flowing (a transient ICE "disconnected" blip stays
+//   inside this state — not its own transition — since tearing down for
+//   something that usually self-heals in a second is worse than stale text).
+// lost: genuinely gone — teardown, alarm, button re-enabled. Covers both a
+//   peer connection reaching failed/closed and the WS fully dying.
+let lsState = "idle";
+
+function setLsState(state, message) {
+  lsState = state;
+  renderLsState(message);
+}
+
+function renderLsState(message) {
+  switch (lsState) {
+    case "idle":
+      connectBtn.disabled = false;
+      connectBtn.classList.remove("hidden");
+      teardownMeter();
+      stopStatsWatchdog();
+      stopConnectionLostAlert();
+      setMediaPlaybackState("none");
+      setStatus(message || "Not connected", "");
+      break;
+    case "connecting":
+      connectBtn.disabled = true;
+      connectBtn.classList.remove("hidden");
+      setStatus(message || "Connecting...", "");
+      break;
+    case "live":
+      connectBtn.disabled = true;
+      connectBtn.classList.add("hidden");
+      if (signalingMethod === "manual") {
+        document.getElementById("manualLsFlow").classList.add("hidden");
+      } else {
+        hidePicker();
+      }
+      stopConnectionLostAlert();
+      setStatus(message || `🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
+      if (audioEl.srcObject) setupMeter(audioEl.srcObject);
+      setMediaPlaybackState("playing");
+      showStatusNotification("live");
+      if (!statsWatchdogInterval) startStatsWatchdog();
+      break;
+    case "lost":
+      connectBtn.disabled = false;
+      connectBtn.classList.remove("hidden");
+      document.getElementById("remoteVideoEl").classList.add("hidden");
+      teardownMeter();
+      stopStatsWatchdog();
+      setMediaPlaybackState("none");
+      setStatus(message || "Connection lost", "error");
+      triggerConnectionLostAlert();
+      break;
+  }
+}
+
+function connect() {
+  const addr = getServerAddress();
+  if (!addr) {
+    setStatus("Enter the relay server address above first", "error");
+    serverAddrInput.focus();
+    return;
+  }
+  shouldStayConnected = true;
+  reconnectAttempt = 0;
+  ensureAlertAudioContext();
+  requestWakeLock();
+  iceServers = buildIceServers();
+  ensureNotificationPermission().then((granted) => {
+    if (granted) showStatusNotification("connecting");
+  });
+  setLsState("connecting");
+  openSocket();
+}
+
+function disconnect() {
+  shouldStayConnected = false;
+  clearTimeout(reconnectTimer);
+  if (lsPc) { lsPc.close(); lsPc = null; }
+  if (ws) { ws.close(); ws = null; }
+  teardownTalkback();
+  manualLsControlChannel = null;
+  videoRequested = false;
+  showVideoBtn.disabled = true;
+  showVideoBtn.textContent = "📹 Show Video";
+  remoteVideoEl.classList.add("hidden");
+  remoteVideoEl.srcObject = null;
+  document.getElementById("manualLsFlow").classList.add("hidden");
+  document.getElementById("manualLsOfferStep").classList.add("hidden");
+  document.getElementById("manualLsAnswerStep").classList.add("hidden");
+  document.getElementById("manualLsPasteText").value = "";
+  releaseWakeLock();
+  clearStatusNotification();
+  stopHeartbeat();
+  selectedBroadcasterId = null;
+  selectedBroadcasterName = null;
+  hidePicker();
+  setLsState("idle", "Disconnected");
+}
+
+function scheduleReconnect(immediate) {
+  if (!shouldStayConnected) return;
+  clearTimeout(reconnectTimer);
+  const delay = immediate ? 250 : Math.min(500 * 2 ** reconnectAttempt, 5000);
+  reconnectAttempt++;
+  setLsState("lost", `Reconnecting in ${Math.round(delay / 1000)}s...`);
+  stopHeartbeat();
+  reconnectTimer = setTimeout(() => {
+    if (shouldStayConnected) openSocket();
+  }, delay);
+}
+
+function openSocket() {
+  const addr = getServerAddress();
+  if (!addr) {
+    setStatus("Enter the relay server address above first", "error");
+    connectBtn.disabled = false;
+    return;
+  }
+  const token = getAccessToken();
+  ws = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "register", role: "listener" }));
+    setStatus("Connected to server. Waiting for broadcaster list...", "");
+    startHeartbeat();
+    hideOpenServerPageBtn();
+  };
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "pong") {
+      lastPongAt = Date.now();
+    } else if (msg.type === "welcome") {
+      if (Array.isArray(msg.iceServers) && msg.iceServers.length) {
+        serverIceServers = msg.iceServers;
+        iceServers = buildIceServers();
+      }
+    } else if (msg.type === "error") {
+      shouldStayConnected = false;
+      clearTimeout(reconnectTimer);
+      setStatus(msg.message, "error");
+      connectBtn.disabled = false;
+      ws.close();
+    } else if (msg.type === "broadcaster-list") {
+      if (selectedBroadcasterId && msg.broadcasters.some((b) => b.id === selectedBroadcasterId)) {
+        ws.send(JSON.stringify({ type: "listen", broadcasterId: selectedBroadcasterId }));
+        setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
+      } else if (selectedBroadcasterId) {
+        // The relay server assigns broadcasters a fresh id every time THEY
+        // reconnect (an incrementing counter per WS connection, not a stable
+        // per-device id) — so matching on id alone would mean we can never
+        // find "the same broadcaster" again once it reconnects. Match by
+        // name instead, which is what a human actually means by "the same
+        // broadcaster," and adopt its new id if found.
+        const reconnected = msg.broadcasters.find((b) => b.name === selectedBroadcasterName);
+        if (reconnected) {
+          selectedBroadcasterId = reconnected.id;
+          ws.send(JSON.stringify({ type: "listen", broadcasterId: reconnected.id }));
+          setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
+        } else {
+          // Still waiting for the broadcaster we're locked onto to reappear —
+          // don't clear the selection or force the picker open. That's an
+          // explicit user action (Change mode → Listen again), not something
+          // a transient absence from one list update should decide for them.
+          setLsState("lost", `Waiting for "${selectedBroadcasterName}" to come back...`);
+        }
+      } else {
+        // Skip the picker entirely when there's nothing to actually choose
+        // between: a remembered preference exists and it's the one and only
+        // broadcaster currently available. Any ambiguity — multiple options,
+        // or the preferred one isn't among them — still shows the picker.
+        const preferredName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+        const isOnlyThePreferred = preferredName && msg.broadcasters.length === 1 && msg.broadcasters[0].name === preferredName;
+        if (isOnlyThePreferred) {
+          chooseBroadcaster(msg.broadcasters[0].id, msg.broadcasters[0].name);
+        } else {
+          setStatus("Choose a broadcaster below", "");
+          renderBroadcasterList(msg.broadcasters);
+          showPicker();
+        }
+      }
+    } else if (msg.type === "broadcaster-gone" && msg.id === selectedBroadcasterId) {
+      if (lsPc) { lsPc.close(); lsPc = null; }
+      // Same reasoning as above — stay locked onto this broadcaster and keep
+      // waiting rather than bouncing back to the picker automatically.
+      setLsState("lost", `"${selectedBroadcasterName}" disconnected — waiting for it to come back...`);
+      ws.send(JSON.stringify({ type: "list-broadcasters" }));
+    } else if (msg.type === "offer") {
+      await handleIncomingOffer({ type: "offer", sdp: msg.sdp });
+    } else if (msg.type === "ice") {
+      if (lsPc && msg.candidate) {
+        try { await lsPc.addIceCandidate(msg.candidate); } catch {}
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    stopHeartbeat();
+    maybeShowOpenServerPageBtn();
+    if (shouldStayConnected) scheduleReconnect(false);
+  };
+  ws.onerror = () => ws.close();
+}
+
+// Shared by both signaling modes: the WebRTC mechanics of the listener's
+// connection (ontrack routing, data channel, connection-state lifecycle) are
+// identical regardless of how the offer/answer was exchanged — only that
+// exchange itself, and how "connection genuinely lost" gets handled,
+// actually differ. `conn` becomes `lsPc` in the caller.
+function attachLsConnectionHandlers(conn) {
+  conn.ontrack = (e) => {
+    if (e.track.kind === "video") {
+      const videoEl = document.getElementById("remoteVideoEl");
+      videoEl.srcObject = e.streams[0];
+      videoEl.classList.remove("hidden");
+      return;
+    }
+    audioEl.srcObject = e.streams[0];
+    audioEl.muted = false;
+    audioEl.volume = 1;
+    if (signalingMethod !== "manual") reconnectAttempt = 0;
+    audioEl.play().catch((err) => {
+      console.warn("audio.play() blocked:", err.message);
+      setStatus("Tap the page to enable audio playback", "reconnecting");
+    });
+    setupMeter(e.streams[0]);
+    if (signalingMethod === "manual") startStatsWatchdog();
+  };
+
+  conn.ondatachannel = (e) => {
+    setupLsControlChannel(e.channel);
+  };
+
+  conn.onconnectionstatechange = () => {
+    if (conn.connectionState === "connected") {
+      setLsState("live");
+    } else if (conn.connectionState === "disconnected") {
+      // Transient — WebRTC's own ICE consent-freshness checks can self-heal
+      // this on their own, often within a second or two. Deliberately NOT a
+      // state transition — no teardown, no alarm, just a status-text nudge —
+      // since blanking the meter or sounding the alarm for something that
+      // usually resolves itself would be worse than a stale status line.
+      setStatus(signalingMethod === "manual"
+        ? "⚠️ Connection interrupted — waiting to see if it recovers..."
+        : "⚠️ Network hiccup — attempting to recover...", "reconnecting");
+    } else if (["failed", "closed"].includes(conn.connectionState)) {
+      // signalingState stays "stable" even once connectionState reaches
+      // "failed" (only SDP negotiation changes signalingState, not
+      // connectivity loss) — without explicitly closing here,
+      // handleIncomingOffer()'s reuse-check would stay true forever,
+      // incorrectly reusing this dead connection instead of building fresh.
+      if (conn === lsPc) { lsPc.close(); lsPc = null; }
+      if (signalingMethod === "manual") {
+        setLsState("lost", "Broadcaster disconnected — scan a new QR to reconnect");
+      } else {
+        setLsState("lost", "Connection lost — reconnecting...");
+        if (shouldStayConnected) scheduleReconnect(false);
+      }
+    }
+  };
+}
+
+function startManualListen() {
+  connectBtn.disabled = true;
+  selectedBroadcasterName = "the broadcaster"; // no name exchange in manual mode; keeps existing status strings sensible
+  setStatus("Manual signaling — scan or paste the broadcaster's offer", "");
+  document.getElementById("manualLsFlow").classList.remove("hidden");
+  document.getElementById("manualLsOfferStep").classList.remove("hidden");
+  document.getElementById("manualLsAnswerStep").classList.add("hidden");
+  ensureAlertAudioContext();
+  requestWakeLock();
+  iceServers = buildIceServers();
+  ensureNotificationPermission().then((granted) => {
+    if (granted) showStatusNotification("connecting");
+  });
+}
+
+async function handleIncomingOffer(offer) {
+  if (signalingMethod !== "manual" && lsPc && lsPc.signalingState !== "closed") {
+    // Renegotiation/restart offer on our EXISTING relay-mode connection (e.g.
+    // the broadcaster called restartIce() after a network blip) — reuse it
+    // rather than tearing down and losing local talkback/video state. Manual
+    // mode never reaches this branch: it has no reconnection (see
+    // attachLsConnectionHandlers), so every scan/paste always builds fresh.
+    await lsPc.setRemoteDescription(offer);
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+    return;
+  }
+
+  // First-ever offer for this session (manual mode: always this branch).
+  if (lsPc) lsPc.close();
+  lsPc = new RTCPeerConnection({ iceServers });
+  attachLsConnectionHandlers(lsPc);
+
+  if (signalingMethod === "manual") {
+    manualLsControlChannel = null;
+    videoRequested = false;
+    showVideoBtn.disabled = true;
+    showVideoBtn.textContent = "📹 Show Video";
+    remoteVideoEl.classList.add("hidden");
+    remoteVideoEl.srcObject = null;
+  } else {
+    lsPc.onicecandidate = (e) => {
+      if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
+      }
+    };
+  }
+
+  await lsPc.setRemoteDescription(offer);
+  await setupTalkback(lsPc);
+
+  if (signalingMethod === "manual") {
+    setStatus("Offer received. Generating answer (this can take a few seconds)...", "");
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    await waitForIceGathering(lsPc);
+
+    const answerBytes = await encodeToBytes(toPlainDescription(lsPc.localDescription));
+    document.getElementById("manualLsAnswerText").value = toBackupText(toPlainDescription(lsPc.localDescription));
+    document.getElementById("manualLsOfferStep").classList.add("hidden");
+    document.getElementById("manualLsAnswerStep").classList.remove("hidden");
+    setStatus("Show this QR back to the broadcaster", "");
+    try {
+      await renderQR("manualLsQrImg", answerBytes);
+    } catch (e) {
+      setStatus("Answer too large for QR — use the text backup below.", "error");
+    }
+    connectBtn.disabled = false;
+  } else {
+    const answer = await lsPc.createAnswer();
+    await lsPc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+  }
+}
+
+document.getElementById("manualLsScanBtn").addEventListener("click", () => {
+  scanQR(document.getElementById("manualLsVideo"), document.getElementById("manualLsSwitchCamBtn"), async (bytes) => {
+    await handleIncomingOffer(await decodeFromBytes(bytes));
+  });
+});
+
+document.getElementById("manualLsPasteBtn").addEventListener("click", async () => {
+  const text = document.getElementById("manualLsPasteText").value.trim();
+  if (!text) return;
+  const bytes = await backupTextToBytes(text);
+  await handleIncomingOffer(await decodeFromBytes(bytes));
+});
+
+document.getElementById("manualLsCopyAnswerBtn").addEventListener("click", (e) => {
+  copyToClipboard(document.getElementById("manualLsAnswerText").value, e.target);
+});
+
+connectBtn.addEventListener("click", () => {
+  if (signalingMethod === "manual") startManualListen();
+  else connect();
+});
+wakeToggle.addEventListener("change", () => {
+  // Checks both, not just the listener's shouldStayConnected — toggling this
+  // back on mid-broadcast previously did nothing at all, since bcStart()'s
+  // own session state was never consulted here.
+  if (wakeToggle.checked && (shouldStayConnected || bcShouldStayConnected)) requestWakeLock();
+  else releaseWakeLock();
+});
+
+setupMediaSession();
+resizeMeterCanvas();
+clearMeterCanvas();
+
+// ============================================================
+// PWA install prompt + service worker (shared by both modes)
+// ============================================================
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.style.display = "inline-block";
+});
+installBtn.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.style.display = "none";
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}
+
+// ---------- Auto-resume a genuinely-interrupted relay-mode listener session ----------
+// Some Android PWAs get reloaded by the OS after a network change/suspend —
+// a real navigation, outside our JS control — which would otherwise strand
+// you at the bare mode picker with no sign anything was connected.
+// chooseBroadcaster() persists mode+broadcaster; changeMode() clears it on
+// intentional exit — so anything left on load means an unexpected cutoff.
+(function autoResumeSession() {
+  if (signalingMethod !== "relay") return; // manual/QR mode can't auto-resume without a fresh QR anyway
+  const lastMode = localStorage.getItem(LAST_SESSION_KEYS.mode);
+  const lastBroadcasterId = localStorage.getItem(LAST_SESSION_KEYS.broadcasterId);
+  const lastBroadcasterName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+  if (lastMode !== "listen" || !lastBroadcasterId) return;
+  if (!getServerAddress()) return; // nothing to reconnect to without an address
+
+  selectedBroadcasterId = lastBroadcasterId;
+  selectedBroadcasterName = lastBroadcasterName;
+  // selectMode() now auto-connects in relay mode — set the broadcaster info
+  // first so it's already in place once that connection completes, then
+  // override the generic "Connecting..." status with a more specific one.
+  selectMode("listen");
+  setStatus(`Resuming session with "${lastBroadcasterName}"...`, "reconnecting");
+})();
+
+
+// ============================================================
+// Common — shared by both broadcaster and listener
+// ============================================================
+
+function closeAllPanels() {
+  settingsMenu.classList.add("hidden");
+  helpModal.classList.add("hidden");
+  settingsOverlay.classList.add("hidden");
+}
+
+function openSettings() {
+  helpModal.classList.add("hidden");
+  settingsMenu.classList.remove("hidden");
+  settingsOverlay.classList.remove("hidden");
+}
+
+function closeSettings() {
+  closeAllPanels();
+}
+
+function openHelp() {
+  settingsMenu.classList.add("hidden");
+  helpModal.classList.remove("hidden");
+  settingsOverlay.classList.remove("hidden");
+}
+
+function getServerAddress() {
+  const addr = serverAddrInput.value.trim();
+  if (addr) localStorage.setItem(FIELD_KEYS.addr[1], addr);
+  return addr;
+}
+
+function getAccessToken() {
+  const token = accessTokenInput.value.trim();
+  if (token) localStorage.setItem(FIELD_KEYS.token[1], token);
+  return token;
+}
+
+function buildIceServers() {
+  const arr = [...serverIceServers];
+  const stun = stunUrlsInput.value.trim();
+  const turn = turnUrlsInput.value.trim();
+
+  if (stun) {
+    arr.push({ urls: stun.split(",").map((s) => s.trim()) });
+  }
+
+  if (turn) {
+    const turnUrls = turn.split(",").map((s) => s.trim());
+    arr.push({
+      urls: turnUrls,
+      username: turnUsernameInput.value.trim() || undefined,
+      credential: turnCredentialInput.value.trim() || undefined,
+    });
+    // coturn serves STUN and TURN off the same listener by default — unless
+    // a STUN URL was set explicitly, point STUN at the same host(s) too.
+    if (!stun) {
+      const derived = turnUrls.map((u) => u.replace(/^turns:/, "stuns:").replace(/^turn:/, "stun:"));
+      arr.push({ urls: derived });
+    }
+  }
+
+  if (arr.length === 0) {
+    arr.push({ urls: "stun:stun.l.google.com:19302" }); // default only if nothing configured anywhere
+  }
+  return arr;
+}
+
+function maybeShowOpenServerPageBtn() {
+  if (serverAddrInput.value.trim()) openServerPageBtn.classList.remove("hidden");
+}
+
+function hideOpenServerPageBtn() {
+  openServerPageBtn.classList.add("hidden");
+  openServerPageStatus.textContent = "";
+}
+
+function applySignalingMethodUI() {
+  relayAddrRow.classList.toggle("hidden", signalingMethod === "manual");
+}
+
+function selectMode(m) {
+  mode = m;
+  modeSelectWrap.style.display = "none";
+  changeModeBtn.style.display = "inline-block";
+  broadcastSection.style.display = m === "broadcast" ? "block" : "none";
+  listenSection.style.display = m === "listen" ? "block" : "none";
+  document.body.classList.add("session-active");
+  // Relay mode has no scan/paste step to wait on, unlike manual — skip the
+  // extra tap and go straight to fetching the broadcaster list. If the
+  // server address is empty, connect() already handles that (shows an
+  // error, leaves the Connect button available as a fallback to retry).
+  if (m === "listen" && signalingMethod === "relay") connect();
+}
+
+function changeMode() {
+  if (mode === "broadcast") bcStop();
+  else if (mode === "listen") disconnect();
+  mode = null;
+  localStorage.removeItem(LAST_SESSION_KEYS.mode);
+  broadcastSection.style.display = "none";
+  listenSection.style.display = "none";
+  changeModeBtn.style.display = "none";
+  modeSelectWrap.style.display = "block";
+  document.body.classList.remove("session-active");
+}
+
+async function waitForIceGathering(pc, timeoutMs = 4000) {
+  if (pc.iceGatheringState === "complete") return;
+  await new Promise((resolve) => {
+    let done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      pc.removeEventListener("icegatheringstatechange", check);
+      clearTimeout(timer);
+      resolve();
+    }
+    function check() {
+      if (pc.iceGatheringState === "complete") finish();
+    }
+    pc.addEventListener("icegatheringstatechange", check);
+    // Don't block forever — proceed with whatever candidates were gathered so far.
+    // A stuck/misconfigured STUN or TURN server can otherwise hang this indefinitely.
+    const timer = setTimeout(() => {
+      console.warn("ICE gathering timed out after", timeoutMs, "ms — proceeding with candidates gathered so far");
+      finish();
+    }, timeoutMs);
+  });
+}
+
+function renderQR(elementId, bytes) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = "";
+  return new Promise((resolve, reject) => {
+    const segments = [{ data: Array.from(bytes), mode: "byte" }];
+    QRCode.toDataURL(segments, { errorCorrectionLevel: "L", margin: 1, scale: 6 }, (err, url) => {
+      if (err) { reject(err); return; }
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "QR code";
+      el.appendChild(img);
+      resolve();
+    });
+  });
 }
 
 function sdpIpToBytes(ip) {
@@ -1025,7 +2750,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// Raw-bytes gzip (schema-encoded output is already binary, not text)
 async function gzipCompressRawBytes(bytes) {
   const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
   const buffer = await new Response(stream).arrayBuffer();
@@ -1038,20 +2762,10 @@ async function gzipDecompressToRawBytes(bytes) {
   return new Uint8Array(buffer);
 }
 
-const compressionSupported = ("CompressionStream" in window) && ("DecompressionStream" in window);
-
 function looksGzipped(bytes) {
   return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
-// Schema-encode the SDP first (throws away everything reconstructible from a
-// template — see the codec's doc comment above for exactly what that means).
-// Gzip is NOT applied on top of a successful schema encoding: that output is
-// already dense, near-random binary (IPs, hashes, random ufrag/pwd) with no
-// repeated patterns for gzip to exploit, so its ~20-byte header is pure
-// overhead there (verified: it actually grows a 142-byte payload to 165).
-// Gzip is still applied to the JSON fallback path, where it genuinely helps
-// (JSON has real repeated structure — keys, punctuation).
 async function encodeToBytes(descriptionObj) {
   try {
     return encodeSdp(descriptionObj.sdp, descriptionObj.type === "answer");
@@ -1069,9 +2783,6 @@ async function encodeToBytes(descriptionObj) {
   return json;
 }
 
-// Un-gzip if needed, then distinguish schema-encoded bytes from the plain-JSON
-// fallback by checking for a leading '{' (0x7B) — JSON always starts with
-// that; the schema encoding's first byte is a small flags value that never is.
 async function decodeFromBytes(bytes) {
   bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (looksGzipped(bytes)) {
@@ -1088,9 +2799,6 @@ function toBackupText(descriptionObj) {
   return JSON.stringify(descriptionObj);
 }
 
-// RTCSessionDescription's type/sdp are prototype getters, not own enumerable
-// properties — JSON.stringify() on the object directly can silently produce
-// "{}" in some browser engines. Always convert to a plain object first.
 function toPlainDescription(desc) {
   return { type: desc.type, sdp: desc.sdp };
 }
@@ -1109,12 +2817,6 @@ function copyToClipboard(text, btn) {
     setTimeout(() => (btn.textContent = original), 1200);
   }).catch(() => alert("Clipboard copy failed — select the text manually."));
 }
-
-// Shared camera-scanning logic (single canvas/video reused by both
-// broadcaster and listener manual flows — only one scans at a time)
-let manualScanStream = null;
-let manualScanning = false;
-const manualScanCanvas = document.getElementById("scanCanvas");
 
 async function scanQR(videoEl, switchBtn, onResult) {
   const ctx = manualScanCanvas.getContext("2d");
@@ -1225,931 +2927,6 @@ function stopManualScanning(videoEl, switchBtn) {
   switchBtn.classList.add("hidden");
 }
 
-// ============================================================
-// Broadcast mode
-// ============================================================
-const bcStatusEl = document.getElementById("bcStatus");
-const bcStatusText = document.getElementById("bcStatusText");
-const bcDot = bcStatusEl.querySelector(".dot");
-const bcStartBtn = document.getElementById("bcStartBtn");
-const listenersEl = document.getElementById("listeners");
-const deviceNameInput = document.getElementById("deviceName");
-
-const NAME_KEY = "micStreamDeviceName";
-deviceNameInput.value = localStorage.getItem(NAME_KEY) || defaultDeviceName();
-deviceNameInput.addEventListener("change", () => {
-  localStorage.setItem(NAME_KEY, deviceNameInput.value.trim());
-});
-
-function defaultDeviceName() {
-  const ua = navigator.userAgent;
-  if (/iPhone/.test(ua)) return "iPhone";
-  if (/iPad/.test(ua)) return "iPad";
-  if (/Android/.test(ua)) return "Android device";
-  if (/Mac/.test(ua)) return "Mac";
-  if (/Windows/.test(ua)) return "Windows PC";
-  if (/Linux/.test(ua)) return "Linux device";
-  return "My device";
-}
-
-let bcLocalStream = null;
-let bcWs = null;
-let manualBcPc = null; // used only when signalingMethod === "manual"
-const bcPeers = new Map(); // listenerId -> RTCPeerConnection
-
-// ---------- Voice-activated sending (VOX) ----------
-// Gates the MAIN broadcast audio (not push-to-talk) using the same replaceTrack
-// trick as everything else here: while "closed", the sender transmits nothing
-// at all, not just muted silence. Works uniformly across relay mode (possibly
-// multiple listener senders) and manual mode (one sender), via this shared map.
-const mainAudioSenders = new Map(); // key ("manual" or listener id) -> RTCRtpSender
-
-const VOX_HOLD_MS = 1500; // keep sending this long after level drops, to avoid rapid chatter
-
-let voxThresholdRms = 0.02; // default until a listener sends its own preference
-let voxEnabled = false;
-let voxAudioContext = null;
-let voxAnalyser = null;
-let voxSource = null;
-let voxRafId = null;
-let voxGateOpen = true;
-let voxLastAboveThresholdAt = 0;
-
-function voxApplyGate(open) {
-  if (open === voxGateOpen) return;
-  voxGateOpen = open;
-  const micTrack = bcLocalStream ? bcLocalStream.getAudioTracks()[0] : null;
-  mainAudioSenders.forEach((sender) => {
-    sender.replaceTrack(open ? micTrack : null).catch(() => {});
-  });
-  document.getElementById("voxStatus").textContent = voxEnabled
-    ? (open ? "🎙️ Voice detected — sending" : "🔇 Quiet — muted (saving bandwidth)")
-    : "";
-}
-
-function voxTick() {
-  if (!voxEnabled || !voxAnalyser) return;
-  const data = new Uint8Array(voxAnalyser.fftSize);
-  voxAnalyser.getByteTimeDomainData(data);
-  let sumSquares = 0;
-  for (let i = 0; i < data.length; i++) {
-    const norm = (data[i] - 128) / 128;
-    sumSquares += norm * norm;
-  }
-  const rms = Math.sqrt(sumSquares / data.length);
-  const now = Date.now();
-  if (rms > voxThresholdRms) {
-    voxLastAboveThresholdAt = now;
-    if (!voxGateOpen) voxApplyGate(true);
-  } else if (voxGateOpen && now - voxLastAboveThresholdAt > VOX_HOLD_MS) {
-    voxApplyGate(false);
-  }
-  voxRafId = requestAnimationFrame(voxTick);
-}
-
-function startVox(stream) {
-  stopVox();
-  if (!stream || stream.getAudioTracks().length === 0) return;
-  try {
-    voxAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    voxSource = voxAudioContext.createMediaStreamSource(stream);
-    voxAnalyser = voxAudioContext.createAnalyser();
-    voxAnalyser.fftSize = 512;
-    voxSource.connect(voxAnalyser);
-    voxGateOpen = true; // start open — assume speech until proven quiet, so we don't clip the start of a sound
-    voxLastAboveThresholdAt = Date.now();
-    document.getElementById("voxStatus").textContent = "🎙️ Voice detected — sending";
-    voxTick();
-  } catch (err) {
-    console.warn("VOX setup failed:", err.name, err.message);
-  }
-}
-
-function stopVox() {
-  if (voxRafId) cancelAnimationFrame(voxRafId);
-  voxRafId = null;
-  if (voxSource) { try { voxSource.disconnect(); } catch {} voxSource = null; }
-  if (voxAudioContext) { try { voxAudioContext.close(); } catch {} voxAudioContext = null; }
-  voxAnalyser = null;
-  if (!voxGateOpen) voxApplyGate(true); // always leave senders in the "sending" state when VOX is off
-  voxGateOpen = true;
-  document.getElementById("voxStatus").textContent = "";
-}
-
-// Driven entirely by config messages from the listener (over the control data
-// channel in manual mode, or the WebSocket in relay mode) — there's no local
-// broadcaster-side control for this anymore.
-function applyVoxConfig(enabled, threshold) {
-  if (typeof threshold === "number" && threshold > 0) voxThresholdRms = threshold;
-  voxEnabled = enabled;
-  if (voxEnabled && bcLocalStream) startVox(bcLocalStream);
-  else stopVox();
-}
-
-function bcSetStatus(text, cls) {
-  bcStatusText.textContent = text;
-  bcStatusEl.className = cls || "";
-  bcDot.className = "dot" + (cls === "live" ? " live" : "");
-}
-
-function bcUpdateListenerCount() {
-  const n = bcPeers.size;
-  listenersEl.textContent = n === 0 ? "No listeners connected yet" : `${n} listener(s) connected`;
-}
-
-// Proactively requests (then immediately releases) camera permission right
-// at broadcast start — a genuine user gesture (tapping "Start Broadcasting").
-// Video-on-demand later calls getUserMedia() again from inside a remote
-// data-channel message handler, which isn't a local user gesture at all;
-// some browsers block or silently fail a first-time permission prompt in
-// that context. Priming it here means that later call just succeeds against
-// an already-granted permission instead. Deliberately NOT awaited by the
-// caller and fully self-contained in its own try/catch — if it's denied, or
-// there's no camera, video-on-demand will simply keep failing gracefully
-// later (already handled there), but the core audio broadcast is completely
-// unaffected either way.
-function primeVideoPermission() {
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then((stream) => stream.getTracks().forEach((t) => t.stop()))
-    .catch((err) => {
-      console.warn("Video permission not granted at broadcast start — video-on-demand may fail later:", err.name, err.message);
-    });
-}
-
-// Shared by both signaling modes: capture the mic, prime video permission,
-// and update the (mode-agnostic) parts of the UI. Returns false on denial —
-// callers should just return early in that case, everything's already
-// handled here (status message, re-enabling the button).
-async function bcCaptureMicAndPrepare() {
-  bcStartBtn.disabled = true;
-  deviceNameInput.disabled = true;
-  iceServers = buildIceServers();
-  try {
-    bcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch (err) {
-    bcSetStatus("Mic access denied: " + err.message, "error");
-    bcStartBtn.disabled = false;
-    deviceNameInput.disabled = false;
-    return false;
-  }
-  primeVideoPermission();
-  showStatusNotification("sending");
-  bcStartBtn.textContent = "Stop Broadcasting";
-  bcStartBtn.disabled = false;
-  return true;
-}
-
-let bcShouldStayConnected = false;
-let bcReconnectAttempt = 0;
-let bcReconnectTimer = null;
-let bcLastAddr = null;
-
-function bcScheduleReconnect(immediate) {
-  if (!bcShouldStayConnected) return;
-  clearTimeout(bcReconnectTimer);
-  const delay = immediate ? 250 : Math.min(500 * 2 ** bcReconnectAttempt, 5000);
-  bcReconnectAttempt++;
-  bcSetStatus(`Signaling server disconnected — reconnecting in ${Math.round(delay / 1000)}s...`, "error");
-  bcReconnectTimer = setTimeout(() => {
-    if (bcShouldStayConnected && bcLastAddr) bcConnectSignaling(bcLastAddr);
-  }, delay);
-}
-
-async function bcStart() {
-  const addr = getServerAddress();
-  if (!addr) {
-    bcSetStatus("Enter the relay server address above first", "error");
-    return;
-  }
-  if (!(await bcCaptureMicAndPrepare())) return;
-  bcSetStatus("Mic captured. Waiting for listeners...", "live");
-  bcShouldStayConnected = true;
-  bcReconnectAttempt = 0;
-  bcConnectSignaling(addr);
-}
-
-function bcStop() {
-  bcShouldStayConnected = false;
-  clearTimeout(bcReconnectTimer);
-  if (bcWs) { bcWs.close(); bcWs = null; }
-  bcPeers.forEach((pc) => pc.close());
-  bcPeers.clear();
-  if (manualBcPc) { manualBcPc.close(); manualBcPc = null; }
-  restartRetryTimers.forEach((timer) => clearTimeout(timer));
-  restartRetryTimers.clear();
-  bcVideoState.forEach((state) => state.stream.getTracks().forEach((t) => t.stop()));
-  bcVideoState.clear();
-  bcControlChannels.clear();
-  stopVox();
-  voxEnabled = false;
-  mainAudioSenders.clear();
-  document.getElementById("manualBcFlow").classList.add("hidden");
-  document.getElementById("manualBcOfferStep").classList.add("hidden");
-  document.getElementById("manualBcAnswerStep").classList.add("hidden");
-  document.getElementById("manualBcPasteText").value = "";
-  if (bcLocalStream) { bcLocalStream.getTracks().forEach((t) => t.stop()); bcLocalStream = null; }
-  document.getElementById("bcIncomingAudio").srcObject = null;
-  document.getElementById("talkbackIncoming").textContent = "";
-  bcUpdateListenerCount();
-  bcSetStatus("Not started", "");
-  bcStartBtn.textContent = "Start Broadcasting Mic";
-  bcStartBtn.disabled = false;
-  deviceNameInput.disabled = false;
-}
-
-function bcConnectSignaling(addr) {
-  bcLastAddr = addr;
-  const token = getAccessToken();
-  bcWs = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
-  const name = deviceNameInput.value.trim() || defaultDeviceName();
-
-  bcWs.onopen = () => {
-    if (bcReconnectAttempt > 0) bcSetStatus("Reconnected to signaling server", "live");
-    bcReconnectAttempt = 0;
-    bcWs.send(JSON.stringify({ type: "register", role: "broadcaster", name }));
-    hideOpenServerPageBtn();
-  };
-
-  bcWs.onmessage = async (event) => {
-    const msg = JSON.parse(event.data);
-
-    if (msg.type === "error") {
-      bcSetStatus(msg.message, "error");
-      bcWs.close();
-    } else if (msg.type === "listener-join") {
-      await bcCreatePeerForListener(msg.id);
-    } else if (msg.type === "listener-leave") {
-      const pc = bcPeers.get(msg.id);
-      if (pc) pc.close();
-      bcPeers.delete(msg.id);
-      mainAudioSenders.delete(msg.id);
-      clearRestartRetry(msg.id);
-      const videoState = bcVideoState.get(msg.id);
-      if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
-      bcVideoState.delete(msg.id);
-      bcControlChannels.delete(msg.id);
-      bcUpdateListenerCount();
-    } else if (msg.type === "answer") {
-      const pc = bcPeers.get(msg.id);
-      if (pc) await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
-    } else if (msg.type === "ice") {
-      const pc = bcPeers.get(msg.id);
-      if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate);
-    } else if (msg.type === "vox-config") {
-      applyVoxConfig(!!msg.enabled, msg.threshold);
-    }
-  };
-
-  bcWs.onclose = () => {
-    maybeShowOpenServerPageBtn();
-    if (bcLocalStream) bcScheduleReconnect(false);
-  };
-}
-
-// ---------- ICE restart with retry ----------
-// A single restartIce() attempt right when connectionState first flips to
-// "disconnected" can easily fire too early — the new network path (e.g.
-// cellular data) often isn't actually routable yet for the first second or
-// two. One failed attempt with no follow-up left the connection permanently
-// stuck. This retries a few times with a short delay instead of giving up
-// after one shot, and stops as soon as the connection actually recovers.
-const restartRetryTimers = new Map(); // key -> timeout id
-
-function attemptRestartWithRetry(pc, key, { maxAttempts = 5, delayMs = 3000 } = {}) {
-  clearRestartRetry(key);
-  let attempts = 0;
-  function tryRestart() {
-    if (pc.connectionState !== "disconnected") return; // already recovered, or moved on to failed/closed
-    attempts++;
-    console.warn(`ICE restart attempt ${attempts}/${maxAttempts} for`, key);
-    try { pc.restartIce(); } catch (err) { console.warn("restartIce failed:", err.name, err.message); }
-    if (attempts < maxAttempts) {
-      restartRetryTimers.set(key, setTimeout(tryRestart, delayMs));
-    } else {
-      restartRetryTimers.delete(key);
-    }
-  }
-  tryRestart();
-}
-function clearRestartRetry(key) {
-  const timer = restartRetryTimers.get(key);
-  if (timer) { clearTimeout(timer); restartRetryTimers.delete(key); }
-}
-
-// Shared by both signaling modes: the actual WebRTC mechanics of a
-// broadcaster-side connection are identical regardless of how the offer/answer
-// gets exchanged — only that exchange itself (WS vs QR-then-datachannel)
-// differs, and stays in each caller. `key` is "manual" for the single manual
-// connection, or the listener id for a relay-mode connection.
-function createBcPeerConnection(key) {
-  const pc = new RTCPeerConnection({ iceServers });
-
-  // Data channel for vox-config/video/ping — same generic setup regardless of
-  // mode, so these no longer depend on the relay server recognizing new
-  // message types. The initial offer/answer/ICE exchange itself stays on
-  // whatever transport each mode actually uses for that.
-  setupBcControlChannel(pc.createDataChannel("control"), key);
-
-  pc.ontrack = (e) => {
-    document.getElementById("bcIncomingAudio").srcObject = e.streams[0];
-    const track = e.track;
-    const incomingEl = document.getElementById("talkbackIncoming");
-    track.onunmute = () => { incomingEl.textContent = "🔊 Listener is talking"; };
-    track.onmute = () => { incomingEl.textContent = ""; };
-  };
-
-  return pc;
-}
-
-async function bcCreatePeerForListener(id) {
-  const pc = createBcPeerConnection(id);
-  bcPeers.set(id, pc);
-  bcUpdateListenerCount();
-
-  // Unified path for the very first offer AND any later renegotiation/restart
-  // offer (e.g. after restartIce()) — both just fire this same event, so there's
-  // no separate manual createOffer() call needed elsewhere.
-  pc.onnegotiationneeded = async () => {
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      bcWs.send(JSON.stringify({ type: "offer", id, sdp: offer.sdp }));
-    } catch (err) {
-      console.warn("Renegotiation (offer) failed for listener", id, err.name, err.message);
-    }
-  };
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate) {
-      bcWs.send(JSON.stringify({ type: "ice", id, candidate: e.candidate }));
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") {
-      bcUpdateListenerCount();
-      clearRestartRetry(id);
-    } else if (pc.connectionState === "disconnected") {
-      // Transient — often a network change (Wi-Fi ↔ cellular) rather than a real
-      // hangup. Try to recover the SAME connection before giving up on it.
-      attemptRestartWithRetry(pc, id);
-    } else if (["failed", "closed"].includes(pc.connectionState)) {
-      // Retries exhausted (or the browser gave up on its own) — this listener
-      // is genuinely gone. Clean it up properly rather than leaving a dead
-      // entry sitting in every tracking map forever.
-      console.warn("Listener", id, "connection failed permanently — cleaning up");
-      clearRestartRetry(id);
-      pc.close();
-      bcPeers.delete(id);
-      mainAudioSenders.delete(id);
-      const videoState = bcVideoState.get(id);
-      if (videoState) videoState.stream.getTracks().forEach((t) => t.stop());
-      bcVideoState.delete(id);
-      bcControlChannels.delete(id);
-      bcUpdateListenerCount();
-    }
-  };
-
-  bcLocalStream.getTracks().forEach((track) => {
-    const sender = pc.addTrack(track, bcLocalStream);
-    mainAudioSenders.set(id, sender);
-  });
-}
-
-// ---------- Control data channel + video-on-demand: shared by BOTH signaling
-// modes. In manual mode there's exactly one connection, keyed "manual". In
-// relay mode each listener gets their own entry keyed by their listener id.
-// Using a data channel here (rather than relay-server WS messages) means none
-// of this — vox-config, video requests, restart offers — depends on the relay
-// server recognizing any particular message type; it only depends on the
-// WebRTC connection itself, which exists the same way in both modes.
-const bcControlChannels = new Map(); // id -> RTCDataChannel
-const bcVideoState = new Map(); // id -> { stream, sender }
-
-function getBcPc(id) {
-  return id === "manual" ? manualBcPc : bcPeers.get(id);
-}
-
-const VIDEO_RESOLUTION_PRESETS = {
-  low: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } },
-  medium: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } },
-  high: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24 } },
-};
-
-function getCameraStream(resolution) {
-  return navigator.mediaDevices.getUserMedia({ video: VIDEO_RESOLUTION_PRESETS[resolution] || VIDEO_RESOLUTION_PRESETS.medium });
-}
-
-async function bcHandleVideoRequest(id, show, resolution) {
-  const pcForId = getBcPc(id);
-  if (!pcForId) return;
-  const incomingEl = document.getElementById("talkbackIncoming");
-  const existing = bcVideoState.get(id);
-  if (show) {
-    if (existing) return; // already sending
-    let stream;
-    try {
-      stream = await getCameraStream(resolution);
-    } catch (err) {
-      console.warn("Camera unavailable for video request:", err.name, err.message);
-      const channel = bcControlChannels.get(id);
-      if (channel && channel.readyState === "open") {
-        channel.send(JSON.stringify({ type: "video-unavailable" }));
-      }
-      return;
-    }
-    const track = stream.getVideoTracks()[0];
-    const sender = pcForId.addTrack(track, stream);
-    bcVideoState.set(id, { stream, sender });
-    incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
-    // Adding a track fires 'negotiationneeded' automatically — handled below.
-  } else {
-    if (!existing) return;
-    existing.stream.getTracks().forEach((t) => t.stop()); // actually stops the camera hardware
-    pcForId.removeTrack(existing.sender);
-    bcVideoState.delete(id);
-    incomingEl.textContent = "";
-    // Removing a track also fires 'negotiationneeded' automatically.
-  }
-}
-
-// Switching resolution while video is already flowing swaps the underlying
-// MediaStreamTrack via replaceTrack() on the same sender — this does NOT
-// change the transceiver's direction or m-line, so no renegotiation round-trip
-// is needed at all (unlike turning video fully on/off).
-async function bcSwitchVideoResolution(id, resolution) {
-  const existing = bcVideoState.get(id);
-  if (!existing) return; // video not currently active — nothing to switch live
-  const incomingEl = document.getElementById("talkbackIncoming");
-  try {
-    const newStream = await getCameraStream(resolution);
-    const newTrack = newStream.getVideoTracks()[0];
-    const oldStream = existing.stream;
-    await existing.sender.replaceTrack(newTrack);
-    existing.stream = newStream;
-    oldStream.getTracks().forEach((t) => t.stop());
-    incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
-  } catch (err) {
-    console.warn("Resolution switch failed:", err.name, err.message);
-  }
-}
-
-function setupBcControlChannel(channel, id) {
-  bcControlChannels.set(id, channel);
-  channel.onclose = () => { bcControlChannels.delete(id); };
-  channel.onmessage = async (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
-    if (msg.type === "ping") {
-      channel.send(JSON.stringify({ type: "pong" }));
-    } else if (msg.type === "vox-config") {
-      applyVoxConfig(!!msg.enabled, msg.threshold);
-    } else if (msg.type === "video-request") {
-      await bcHandleVideoRequest(id, !!msg.show, msg.resolution || "medium");
-    } else if (msg.type === "video-resolution") {
-      await bcSwitchVideoResolution(id, msg.resolution);
-    } else if (msg.type === "answer") {
-      // Renegotiation answer, in response to an offer we sent below.
-      const pcForId = getBcPc(id);
-      if (pcForId) await pcForId.setRemoteDescription({ type: "answer", sdp: msg.sdp });
-    }
-  };
-}
-
-async function bcStartManual() {
-  if (!(await bcCaptureMicAndPrepare())) return;
-  bcSetStatus("Mic captured. Generating offer (this can take a few seconds)...", "live");
-  listenersEl.textContent = "No listeners connected yet";
-  document.getElementById("manualBcFlow").classList.remove("hidden");
-  // Don't reveal the QR/text step yet — it would show empty containers while the
-  // offer + ICE gathering are still in progress. Show it only once populated below.
-  document.getElementById("manualBcOfferStep").classList.add("hidden");
-  document.getElementById("manualBcAnswerStep").classList.add("hidden");
-
-  manualBcPc = createBcPeerConnection("manual");
-  bcLocalStream.getTracks().forEach((track) => {
-    const sender = manualBcPc.addTrack(track, bcLocalStream);
-    mainAudioSenders.set("manual", sender);
-  });
-
-  manualBcPc.onnegotiationneeded = async () => {
-    // Fires automatically whenever a track is added/removed after the initial
-    // connection (e.g. video toggled on/off) — never fires for the very first
-    // offer since we create that manually below before any listener is negotiating.
-    const channel = bcControlChannels.get("manual");
-    if (!channel || channel.readyState !== "open") return;
-    try {
-      const offer = await manualBcPc.createOffer();
-      await manualBcPc.setLocalDescription(offer);
-      await waitForIceGathering(manualBcPc);
-      channel.send(JSON.stringify({ type: "offer", sdp: manualBcPc.localDescription.sdp }));
-    } catch (err) {
-      console.error("Renegotiation (offer) failed:", err.name, err.message);
-    }
-  };
-
-  manualBcPc.onconnectionstatechange = () => {
-    if (manualBcPc.connectionState === "connected") {
-      bcSetStatus("Listener connected", "live");
-      listenersEl.textContent = "1 listener connected";
-    } else if (manualBcPc.connectionState === "disconnected") {
-      // Transient — WebRTC's own ICE consent-freshness checks can self-heal
-      // this without any action from us. Manual/QR mode has no active
-      // recovery mechanism (that's deliberate — it keeps the data channel
-      // scoped to session-independent things like VOX/video/ping, identical
-      // to relay mode, rather than also carrying reconnection traffic). If it
-      // doesn't recover on its own, the listener will need a fresh QR.
-      bcSetStatus("⚠️ Connection interrupted — waiting to see if it recovers...", "reconnecting");
-    } else if (["failed", "closed"].includes(manualBcPc.connectionState)) {
-      bcSetStatus("Listener disconnected — they'll need to scan a new QR to reconnect", "error");
-      listenersEl.textContent = "No listeners connected yet";
-    }
-  };
-
-  const offer = await manualBcPc.createOffer();
-  await manualBcPc.setLocalDescription(offer);
-  await waitForIceGathering(manualBcPc);
-
-  const offerBytes = await encodeToBytes(toPlainDescription(manualBcPc.localDescription));
-  document.getElementById("manualBcOfferText").value = toBackupText(toPlainDescription(manualBcPc.localDescription));
-  document.getElementById("manualBcOfferStep").classList.remove("hidden");
-  bcSetStatus("Offer ready — show the QR to the listener", "live");
-  try {
-    await renderQR("manualBcQrImg", offerBytes);
-  } catch (e) {
-    bcSetStatus("Offer too large for QR — use the text backup below.", "error");
-  }
-}
-
-document.getElementById("manualBcNextBtn").addEventListener("click", () => {
-  document.getElementById("manualBcOfferStep").classList.add("hidden");
-  document.getElementById("manualBcAnswerStep").classList.remove("hidden");
-});
-
-document.getElementById("manualBcCopyOfferBtn").addEventListener("click", (e) => {
-  copyToClipboard(document.getElementById("manualBcOfferText").value, e.target);
-});
-
-document.getElementById("manualBcScanBtn").addEventListener("click", () => {
-  scanQR(document.getElementById("manualBcVideo"), document.getElementById("manualBcSwitchCamBtn"), async (bytes) => {
-    const answer = await decodeFromBytes(bytes);
-    await manualBcPc.setRemoteDescription(answer);
-    bcSetStatus("Answer applied. Connecting...", "live");
-  });
-});
-
-document.getElementById("manualBcPasteBtn").addEventListener("click", async () => {
-  const text = document.getElementById("manualBcPasteText").value.trim();
-  if (!text) return;
-  const bytes = await backupTextToBytes(text);
-  const answer = await decodeFromBytes(bytes);
-  await manualBcPc.setRemoteDescription(answer);
-  bcSetStatus("Answer applied. Connecting...", "live");
-});
-
-bcStartBtn.addEventListener("click", () => {
-  if (bcLocalStream) { bcStop(); return; }
-  requestWakeLock();
-  if (signalingMethod === "manual") bcStartManual();
-  else bcStart();
-});
-
-// ============================================================
-// Listen mode
-// ============================================================
-const connectBtn = document.getElementById("connectBtn");
-const installBtn = document.getElementById("installBtn");
-const statusEl = document.getElementById("status");
-const statusText = document.getElementById("statusText");
-const dot = statusEl.querySelector(".dot");
-const audioEl = document.getElementById("audio");
-const wakeToggle = document.getElementById("wakeToggle");
-const meterCanvas = document.getElementById("meterCanvas");
-const meterCtx = meterCanvas.getContext("2d");
-const meterDbLabel = document.getElementById("meterDb");
-const meterPeakLabel = document.getElementById("meterPeakLabel");
-const alertToggle = document.getElementById("alertToggle");
-
-// ---------- Listener-controlled VOX (voice-activated sending) config ----------
-// The listener owns this setting (enabled + sensitivity), persisted locally,
-// and pushes it to the broadcaster over whichever signaling channel is active.
-const LISTENER_VOX_ENABLED_KEY = "micStreamVoxEnabled";
-const LISTENER_VOX_THRESHOLD_KEY = "micStreamVoxThreshold";
-const listenerVoxToggle = document.getElementById("listenerVoxToggle");
-const voxThresholdSlider = document.getElementById("voxThresholdSlider");
-
-const savedVoxEnabled = localStorage.getItem(LISTENER_VOX_ENABLED_KEY);
-if (savedVoxEnabled !== null) listenerVoxToggle.checked = savedVoxEnabled === "true";
-const savedVoxThreshold = localStorage.getItem(LISTENER_VOX_THRESHOLD_KEY);
-if (savedVoxThreshold !== null) voxThresholdSlider.value = savedVoxThreshold;
-
-function sendVoxConfig() {
-  const payload = JSON.stringify({
-    type: "vox-config",
-    enabled: listenerVoxToggle.checked,
-    threshold: parseFloat(voxThresholdSlider.value),
-  });
-  if (manualLsControlChannel && manualLsControlChannel.readyState === "open") {
-    manualLsControlChannel.send(payload);
-  }
-  // Relay mode: requires the relay server to forward this message type through
-  // to the broadcaster — works out of the box if the server relays unrecognized
-  // message types by id, but depends on that server's own implementation.
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(payload);
-  }
-}
-
-listenerVoxToggle.addEventListener("change", () => {
-  localStorage.setItem(LISTENER_VOX_ENABLED_KEY, listenerVoxToggle.checked);
-  sendVoxConfig();
-});
-voxThresholdSlider.addEventListener("input", () => {
-  localStorage.setItem(LISTENER_VOX_THRESHOLD_KEY, voxThresholdSlider.value);
-  sendVoxConfig();
-});
-
-const pickerWrap = document.getElementById("pickerWrap");
-const broadcasterListEl = document.getElementById("broadcasterList");
-const refreshBtn = document.getElementById("refreshBtn");
-const pushToTalkBtn = document.getElementById("pushToTalkBtn");
-const talkbackStatusEl = document.getElementById("talkbackStatus");
-
-// ---------- Push-to-talk (listener → broadcaster) ----------
-// The mic track is added to the peer connection up front (before the answer is
-// created), so the initial negotiation already marks this audio m-line as
-// sendrecv. That means push-to-talk is just replaceTrack(track)/replaceTrack(null)
-// afterwards — no renegotiation needed. While released, replaceTrack(null) stops
-// the sender from transmitting any media at all (not just muted/silent audio —
-// genuinely close to zero bandwidth), rather than merely disabling the track.
-let talkbackStream = null;
-let talkbackTrack = null;
-let talkbackSender = null;
-
-async function setupTalkback(pc) {
-  if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
-  talkbackSender = null;
-  try {
-    talkbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    talkbackTrack = talkbackStream.getAudioTracks()[0];
-    talkbackSender = pc.addTrack(talkbackTrack, talkbackStream);
-    await talkbackSender.replaceTrack(null); // start silent — nothing sent until pressed
-    pushToTalkBtn.classList.remove("hidden");
-    talkbackStatusEl.textContent = "Push-to-talk ready";
-  } catch (err) {
-    console.warn("Push-to-talk mic unavailable:", err.name, err.message);
-    pushToTalkBtn.classList.add("hidden");
-    talkbackStatusEl.textContent = "";
-  }
-}
-
-function teardownTalkback() {
-  if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
-  talkbackTrack = null;
-  talkbackSender = null;
-  pushToTalkBtn.classList.remove("active");
-  pushToTalkBtn.classList.add("hidden");
-  talkbackStatusEl.textContent = "";
-}
-
-async function talkStart() {
-  if (!talkbackSender || !talkbackTrack) return;
-  await talkbackSender.replaceTrack(talkbackTrack);
-  pushToTalkBtn.classList.add("active");
-  talkbackStatusEl.textContent = "🔴 Talking...";
-}
-
-async function talkStop() {
-  if (!talkbackSender) return;
-  await talkbackSender.replaceTrack(null);
-  pushToTalkBtn.classList.remove("active");
-  talkbackStatusEl.textContent = "Push-to-talk ready";
-}
-
-pushToTalkBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); talkStart(); });
-pushToTalkBtn.addEventListener("pointerup", talkStop);
-pushToTalkBtn.addEventListener("pointercancel", talkStop);
-pushToTalkBtn.addEventListener("pointerleave", talkStop);
-
-// ---------- Video on demand (listener → broadcaster), manual mode only ----------
-// The data channel is opened by the broadcaster as part of the very first offer,
-// so it arrives here via ondatachannel once setRemoteDescription() is applied.
-// Everything after the first QR — video on/off requests, and the renegotiation
-// they trigger — flows over this channel instead of needing another QR scan.
-let manualLsControlChannel = null;
-let videoRequested = false;
-const showVideoBtn = document.getElementById("showVideoBtn");
-const remoteVideoEl = document.getElementById("remoteVideoEl");
-const videoResolutionSelect = document.getElementById("videoResolutionSelect");
-
-// ---------- Manual-mode heartbeat (data-channel ping/pong) ----------
-// Independent of whether audio itself is flowing — this is what lets the stats
-// watchdog above tell "legitimate silence" apart from "actually disconnected".
-const MANUAL_HEARTBEAT_INTERVAL_MS = 4000;
-const MANUAL_HEARTBEAT_TIMEOUT_MS = 9000;
-let manualHeartbeatInterval = null;
-let manualLastPongAt = 0;
-
-function startManualHeartbeat(channel) {
-  stopManualHeartbeat();
-  manualLastPongAt = Date.now();
-  manualHeartbeatInterval = setInterval(() => {
-    if (channel.readyState === "open") channel.send(JSON.stringify({ type: "ping" }));
-  }, MANUAL_HEARTBEAT_INTERVAL_MS);
-}
-function stopManualHeartbeat() {
-  clearInterval(manualHeartbeatInterval);
-  manualHeartbeatInterval = null;
-}
-function isManualHeartbeatStale() {
-  return Date.now() - manualLastPongAt > MANUAL_HEARTBEAT_TIMEOUT_MS;
-}
-
-function setupLsControlChannel(channel) {
-  manualLsControlChannel = channel;
-  channel.onopen = () => {
-    showVideoBtn.disabled = false;
-    startManualHeartbeat(channel);
-    sendVoxConfig();
-  };
-  channel.onclose = () => {
-    showVideoBtn.disabled = true;
-    stopManualHeartbeat();
-  };
-  channel.onmessage = async (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
-    if (msg.type === "pong") {
-      manualLastPongAt = Date.now();
-    } else if (msg.type === "offer") {
-      // Renegotiation offer from the broadcaster (e.g. video track added/removed).
-      await lsPc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
-      const answer = await lsPc.createAnswer();
-      await lsPc.setLocalDescription(answer);
-      channel.send(JSON.stringify({ type: "answer", sdp: lsPc.localDescription.sdp }));
-    } else if (msg.type === "video-unavailable") {
-      videoRequested = false;
-      showVideoBtn.textContent = "📹 Show Video";
-      talkbackStatusEl.textContent = "Broadcaster's camera is unavailable";
-    }
-  };
-}
-
-showVideoBtn.addEventListener("click", () => {
-  if (!manualLsControlChannel || manualLsControlChannel.readyState !== "open") return;
-  videoRequested = !videoRequested;
-  manualLsControlChannel.send(JSON.stringify({
-    type: "video-request",
-    show: videoRequested,
-    resolution: videoResolutionSelect.value,
-  }));
-  showVideoBtn.textContent = videoRequested ? "📹 Hide Video" : "📹 Show Video";
-  if (!videoRequested) remoteVideoEl.classList.add("hidden"); // hide immediately; showing waits for the actual track
-});
-
-videoResolutionSelect.addEventListener("change", () => {
-  // If video is already showing, switch it live (no renegotiation needed — see
-  // bcSwitchVideoResolution). If not currently showing, this just becomes the
-  // resolution used whenever Show Video is next pressed.
-  if (videoRequested && manualLsControlChannel && manualLsControlChannel.readyState === "open") {
-    manualLsControlChannel.send(JSON.stringify({ type: "video-resolution", resolution: videoResolutionSelect.value }));
-  }
-});
-
-let selectedBroadcasterId = null;
-let selectedBroadcasterName = null;
-let latestBroadcasterList = [];
-
-let ws = null;
-let lsPc = null; // the listener's single peer connection — shared by both signaling modes
-let wakeLock = null;
-let shouldStayConnected = false;
-let reconnectAttempt = 0;
-let reconnectTimer = null;
-
-let heartbeatInterval = null;
-let heartbeatWatchdog = null;
-let lastPongAt = 0;
-const HEARTBEAT_INTERVAL_MS = 4000;
-const HEARTBEAT_TIMEOUT_MS = 9000;
-
-let statsWatchdogInterval = null;
-let lastBytesReceived = -1;
-let staleStatsCount = 0;
-
-let meterAudioCtx = null;
-let meterSource = null;
-let meterAnalyser = null;
-let meterDataArray = null;
-let meterRAF = null;
-let meterPeakDb = -Infinity;
-let meterPeakHoldUntil = 0;
-
-function setStatus(text, cls) {
-  statusText.textContent = text;
-  statusEl.className = cls || "";
-  dot.className = "dot" + (cls ? " " + cls : "");
-}
-
-function setupMediaSession() {
-  if (!("mediaSession" in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: "Live NiloPhone",
-    artist: selectedBroadcasterName || "NiloPhone",
-    album: "NiloPhone",
-    artwork: [
-      { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-  });
-  navigator.mediaSession.setActionHandler("play", () => connect());
-  navigator.mediaSession.setActionHandler("pause", () => disconnect());
-  navigator.mediaSession.setActionHandler("stop", () => disconnect());
-}
-
-function setMediaPlaybackState(state) {
-  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = state;
-}
-
-let hasAlertedThisDrop = false;
-let alertLoopInterval = null;
-
-// Created once, during a genuine user gesture (tapping Connect / Join Call),
-// and reused for every alert tone thereafter. Creating a *fresh* AudioContext
-// from inside playAlertTone() itself is the bug this avoids: that call
-// happens from an async connectionstatechange event, not a direct user
-// gesture, and browsers can silently start such a context "suspended" — no
-// error thrown, the alarm just never actually makes a sound. A context
-// created/resumed during a real click is reliably unblocked, and stays that
-// way for later use even from async events.
-let alertAudioCtx = null;
-
-function ensureAlertAudioContext() {
-  try {
-    if (!alertAudioCtx) {
-      alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (alertAudioCtx.state === "suspended") {
-      alertAudioCtx.resume().catch(() => {});
-    }
-  } catch (err) {
-    console.warn("Could not prepare alert audio context:", err.message);
-  }
-}
-
-function playAlertTone() {
-  try {
-    if (!alertAudioCtx) ensureAlertAudioContext();
-    const ctx = alertAudioCtx;
-    if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    const now = ctx.currentTime;
-    [880, 660].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const start = now + i * 0.22;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.35, start + 0.02);
-      gain.gain.linearRampToValueAtTime(0, start + 0.18);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.2);
-    });
-  } catch (err) {
-    console.warn("Alert tone failed:", err.message);
-  }
-}
-
-function triggerConnectionLostAlert() {
-  if (hasAlertedThisDrop || !alertToggle.checked) return;
-  hasAlertedThisDrop = true;
-  playAlertTone();
-  alertLoopInterval = setInterval(playAlertTone, 3000);
-  showStatusNotification("reconnecting", { audible: true });
-}
-
-function stopConnectionLostAlert() {
-  if (alertLoopInterval) clearInterval(alertLoopInterval);
-  alertLoopInterval = null;
-  hasAlertedThisDrop = false;
-}
-
-audioEl.addEventListener("playing", () => {
-  setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
-  setupMediaSession();
-  setMediaPlaybackState("playing");
-  showStatusNotification("live");
-  stopConnectionLostAlert();
-  startStatsWatchdog();
-});
-audioEl.addEventListener("pause", () => {
-  setMediaPlaybackState("paused");
-});
-
-var noSleep = new NoSleep();
 async function requestWakeLock() {
   if (!wakeToggle.checked) return;
   noSleep.enable();
@@ -2159,115 +2936,6 @@ async function requestWakeLock() {
 
 async function releaseWakeLock() {
   noSleep.disable();
-}
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && shouldStayConnected) {
-    requestWakeLock();
-    if (!lsPc || lsPc.connectionState === "failed" || lsPc.connectionState === "disconnected" || lsPc.connectionState === "closed") {
-      scheduleReconnect(true);
-    }
-  }
-});
-
-function resizeMeterCanvas() {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = meterCanvas.getBoundingClientRect();
-  meterCanvas.width = rect.width * dpr;
-  meterCanvas.height = rect.height * dpr;
-  meterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-window.addEventListener("resize", resizeMeterCanvas);
-
-function setupMeter(stream) {
-  teardownMeter();
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  meterAudioCtx = new AudioCtx();
-  meterSource = meterAudioCtx.createMediaStreamSource(stream);
-  meterAnalyser = meterAudioCtx.createAnalyser();
-  meterAnalyser.fftSize = 1024;
-  meterAnalyser.smoothingTimeConstant = 0.4;
-  meterDataArray = new Uint8Array(meterAnalyser.fftSize);
-  meterSource.connect(meterAnalyser);
-  resizeMeterCanvas();
-  meterPeakDb = -Infinity;
-  drawMeter();
-}
-
-function teardownMeter() {
-  if (meterRAF) cancelAnimationFrame(meterRAF);
-  meterRAF = null;
-  if (meterSource) { try { meterSource.disconnect(); } catch {} meterSource = null; }
-  if (meterAudioCtx) { meterAudioCtx.close().catch(() => {}); meterAudioCtx = null; }
-  meterAnalyser = null;
-  clearMeterCanvas();
-  meterDbLabel.textContent = "-∞ dB";
-  meterPeakLabel.textContent = "peak: -∞ dB";
-}
-
-function clearMeterCanvas() {
-  const rect = meterCanvas.getBoundingClientRect();
-  meterCtx.clearRect(0, 0, rect.width, rect.height);
-  meterCtx.fillStyle = "#111";
-  meterCtx.fillRect(0, 0, rect.width, rect.height);
-}
-
-function drawMeter() {
-  meterRAF = requestAnimationFrame(drawMeter);
-  if (!meterAnalyser) return;
-
-  meterAnalyser.getByteTimeDomainData(meterDataArray);
-  let sumSquares = 0;
-  for (let i = 0; i < meterDataArray.length; i++) {
-    const norm = (meterDataArray[i] - 128) / 128;
-    sumSquares += norm * norm;
-  }
-  const rms = Math.sqrt(sumSquares / meterDataArray.length);
-  const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
-  const dbClamped = Math.max(db, -60);
-  const level = (dbClamped + 60) / 60;
-
-  const now = performance.now();
-  if (db > meterPeakDb || now > meterPeakHoldUntil) {
-    if (db > meterPeakDb) {
-      meterPeakDb = db;
-      meterPeakHoldUntil = now + 1500;
-    }
-  }
-  if (now > meterPeakHoldUntil) meterPeakDb -= 0.5;
-
-  meterDbLabel.textContent = db === -Infinity ? "-∞ dB" : `${db.toFixed(1)} dB`;
-  meterPeakLabel.textContent = `peak: ${meterPeakDb === -Infinity ? "-∞" : meterPeakDb.toFixed(1)} dB`;
-
-  const rect = meterCanvas.getBoundingClientRect();
-  const w = rect.width, h = rect.height;
-  meterCtx.clearRect(0, 0, w, h);
-  meterCtx.fillStyle = "#111";
-  meterCtx.fillRect(0, 0, w, h);
-
-  const segments = 28;
-  const gap = 3;
-  const segW = (w - gap * (segments - 1)) / segments;
-  const litSegments = Math.round(level * segments);
-
-  for (let i = 0; i < segments; i++) {
-    const frac = i / segments;
-    let color;
-    if (frac < 0.6) color = "#16a34a";
-    else if (frac < 0.85) color = "#eab308";
-    else color = "#dc2626";
-
-    meterCtx.fillStyle = i < litSegments ? color : "#2a2a2a";
-    const x = i * (segW + gap);
-    meterCtx.fillRect(x, 0, segW, h);
-  }
-
-  if (meterPeakDb > -60) {
-    const peakLevel = Math.max(0, Math.min(1, (meterPeakDb + 60) / 60));
-    const peakX = peakLevel * w;
-    meterCtx.fillStyle = "#ffffff";
-    meterCtx.fillRect(Math.min(peakX, w - 2), 0, 2, h);
-  }
 }
 
 async function ensureNotificationPermission() {
@@ -2311,557 +2979,6 @@ async function clearStatusNotification() {
   const notifs = await reg.getNotifications({ tag: "mic-stream-status" });
   notifs.forEach((n) => n.close());
 }
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("message", (event) => {
-    if (event.data && event.data.type === "notification-stop") disconnect();
-  });
-}
-
-function startHeartbeat() {
-  stopHeartbeat();
-  lastPongAt = Date.now();
-  heartbeatInterval = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ping" }));
-    }
-  }, HEARTBEAT_INTERVAL_MS);
-  heartbeatWatchdog = setInterval(() => {
-    if (Date.now() - lastPongAt > HEARTBEAT_TIMEOUT_MS) {
-      console.warn("Heartbeat timed out — signaling socket looks dead, forcing reconnect");
-      if (ws) ws.close();
-    }
-  }, 2000);
-}
-
-function stopHeartbeat() {
-  clearInterval(heartbeatInterval);
-  clearInterval(heartbeatWatchdog);
-  heartbeatInterval = null;
-  heartbeatWatchdog = null;
-}
-
-function getActivePc() {
-  return lsPc;
-}
-
-function startStatsWatchdog() {
-  stopStatsWatchdog();
-  lastBytesReceived = -1;
-  staleStatsCount = 0;
-  statsWatchdogInterval = setInterval(async () => {
-    const activePc = getActivePc();
-    if (!activePc || activePc.connectionState !== "connected") return;
-    try {
-      const stats = await activePc.getStats();
-      let bytesReceived = null;
-      stats.forEach((report) => {
-        if (report.type === "inbound-rtp" && report.kind === "audio") {
-          bytesReceived = report.bytesReceived;
-        }
-      });
-      if (bytesReceived === null) return;
-
-      if (bytesReceived === lastBytesReceived) {
-        staleStatsCount++;
-        if (staleStatsCount >= 2) {
-          // Flat audio bytes alone isn't proof the connection is dead — it's also
-          // exactly what legitimate silence (e.g. VOX gating the broadcaster's
-          // mic during a quiet room) looks like. Each mode has its own
-          // independent liveness signal that doesn't depend on audio actually
-          // flowing — manual mode's data-channel ping/pong, relay mode's own
-          // WS-level ping/pong (already used elsewhere to detect a dead
-          // signaling socket) — and we only treat this as a genuine stall if
-          // that signal has ALSO gone quiet.
-          const heartbeatStale = signalingMethod === "manual"
-            ? isManualHeartbeatStale()
-            : (Date.now() - lastPongAt > HEARTBEAT_TIMEOUT_MS);
-
-          if (!heartbeatStale) {
-            staleStatsCount = 0;
-            return;
-          }
-
-          if (signalingMethod === "manual") {
-            console.warn("Manual mode: audio stalled and heartbeat stale — connection appears lost");
-            staleStatsCount = 0;
-            setStatus("⚠️ Connection appears lost — ask the broadcaster to restart and scan a new QR", "error");
-            teardownMeter();
-            stopStatsWatchdog();
-            stopManualHeartbeat();
-            setMediaPlaybackState("none");
-            triggerConnectionLostAlert();
-            return;
-          }
-          console.warn("Audio track stalled and heartbeat stale — forcing reconnect");
-          staleStatsCount = 0;
-          scheduleReconnect(true);
-        }
-      } else {
-        staleStatsCount = 0;
-        lastBytesReceived = bytesReceived;
-      }
-    } catch {}
-  }, 3000);
-}
-
-function stopStatsWatchdog() {
-  clearInterval(statsWatchdogInterval);
-  statsWatchdogInterval = null;
-}
-
-function renderBroadcasterList(list) {
-  latestBroadcasterList = list;
-  broadcasterListEl.innerHTML = "";
-
-  if (list.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "broadcaster-empty";
-    empty.textContent = "No broadcasters found yet. Make sure one is running \"Start Broadcasting Mic\" on the same relay server.";
-    broadcasterListEl.appendChild(empty);
-    return;
-  }
-
-  list.forEach(({ id, name }) => {
-    const item = document.createElement("div");
-    item.className = "broadcaster-item";
-    const label = document.createElement("span");
-    label.textContent = name;
-    const btn = document.createElement("button");
-    btn.textContent = "Listen";
-    btn.addEventListener("click", () => chooseBroadcaster(id, name));
-    item.appendChild(label);
-    item.appendChild(btn);
-    broadcasterListEl.appendChild(item);
-  });
-}
-
-function showPicker() { pickerWrap.style.display = "block"; }
-function hidePicker() { pickerWrap.style.display = "none"; }
-
-const LAST_SESSION_KEYS = {
-  mode: "micStreamLastMode",
-  broadcasterId: "micStreamLastBroadcasterId",
-  broadcasterName: "micStreamLastBroadcasterName",
-};
-
-function chooseBroadcaster(id, name) {
-  selectedBroadcasterId = id;
-  selectedBroadcasterName = name;
-  localStorage.setItem(LAST_SESSION_KEYS.mode, "listen");
-  localStorage.setItem(LAST_SESSION_KEYS.broadcasterId, id);
-  localStorage.setItem(LAST_SESSION_KEYS.broadcasterName, name);
-  hidePicker();
-  setStatus(`Connecting to "${name}"...`, "");
-  ws.send(JSON.stringify({ type: "listen", broadcasterId: id }));
-  sendVoxConfig();
-}
-
-refreshBtn.addEventListener("click", () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "list-broadcasters" }));
-  }
-});
-
-function connect() {
-  const addr = getServerAddress();
-  if (!addr) {
-    setStatus("Enter the relay server address above first", "error");
-    serverAddrInput.focus();
-    return;
-  }
-  shouldStayConnected = true;
-  reconnectAttempt = 0;
-  connectBtn.disabled = true;
-  setStatus("Connecting...", "");
-  ensureAlertAudioContext();
-  requestWakeLock();
-  iceServers = buildIceServers();
-  ensureNotificationPermission().then((granted) => {
-    if (granted) showStatusNotification("connecting");
-  });
-  openSocket();
-}
-
-function disconnect() {
-  shouldStayConnected = false;
-  clearTimeout(reconnectTimer);
-  if (lsPc) { lsPc.close(); lsPc = null; }
-  if (ws) { ws.close(); ws = null; }
-  teardownTalkback();
-  stopManualHeartbeat();
-  manualLsControlChannel = null;
-  videoRequested = false;
-  showVideoBtn.disabled = true;
-  showVideoBtn.textContent = "📹 Show Video";
-  remoteVideoEl.classList.add("hidden");
-  remoteVideoEl.srcObject = null;
-  document.getElementById("manualLsFlow").classList.add("hidden");
-  document.getElementById("manualLsOfferStep").classList.add("hidden");
-  document.getElementById("manualLsAnswerStep").classList.add("hidden");
-  document.getElementById("manualLsPasteText").value = "";
-  releaseWakeLock();
-  teardownMeter();
-  clearStatusNotification();
-  stopConnectionLostAlert();
-  stopHeartbeat();
-  stopStatsWatchdog();
-  selectedBroadcasterId = null;
-  selectedBroadcasterName = null;
-  hidePicker();
-  setStatus("Disconnected", "");
-  setMediaPlaybackState("none");
-  connectBtn.disabled = false;
-  connectBtn.classList.remove("hidden");
-}
-
-function scheduleReconnect(immediate) {
-  if (!shouldStayConnected) return;
-  clearTimeout(reconnectTimer);
-  const delay = immediate ? 250 : Math.min(500 * 2 ** reconnectAttempt, 5000);
-  reconnectAttempt++;
-  setStatus(`Reconnecting in ${Math.round(delay / 1000)}s...`, "reconnecting");
-  setMediaPlaybackState("none");
-  teardownMeter();
-  stopHeartbeat();
-  stopStatsWatchdog();
-  triggerConnectionLostAlert();
-  reconnectTimer = setTimeout(() => {
-    if (shouldStayConnected) openSocket();
-  }, delay);
-}
-
-function openSocket() {
-  const addr = getServerAddress();
-  if (!addr) {
-    setStatus("Enter the relay server address above first", "error");
-    connectBtn.disabled = false;
-    return;
-  }
-  const token = getAccessToken();
-  ws = new WebSocket(`wss://${addr}${token ? "?token=" + encodeURIComponent(token) : ""}`);
-
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type: "register", role: "listener" }));
-    setStatus("Connected to server. Waiting for broadcaster list...", "");
-    startHeartbeat();
-    hideOpenServerPageBtn();
-  };
-
-  ws.onmessage = async (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === "pong") {
-      lastPongAt = Date.now();
-    } else if (msg.type === "error") {
-      shouldStayConnected = false;
-      clearTimeout(reconnectTimer);
-      setStatus(msg.message, "error");
-      connectBtn.disabled = false;
-      ws.close();
-    } else if (msg.type === "broadcaster-list") {
-      if (selectedBroadcasterId && msg.broadcasters.some((b) => b.id === selectedBroadcasterId)) {
-        ws.send(JSON.stringify({ type: "listen", broadcasterId: selectedBroadcasterId }));
-        setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
-      } else if (selectedBroadcasterId) {
-        // The relay server assigns broadcasters a fresh id every time THEY
-        // reconnect (an incrementing counter per WS connection, not a stable
-        // per-device id) — so matching on id alone would mean we can never
-        // find "the same broadcaster" again once it reconnects. Match by
-        // name instead, which is what a human actually means by "the same
-        // broadcaster," and adopt its new id if found.
-        const reconnected = msg.broadcasters.find((b) => b.name === selectedBroadcasterName);
-        if (reconnected) {
-          selectedBroadcasterId = reconnected.id;
-          ws.send(JSON.stringify({ type: "listen", broadcasterId: reconnected.id }));
-          setStatus(`Reconnecting to "${selectedBroadcasterName}"...`, "reconnecting");
-        } else {
-          // Still waiting for the broadcaster we're locked onto to reappear —
-          // don't clear the selection or force the picker open. That's an
-          // explicit user action (Change mode → Listen again), not something
-          // a transient absence from one list update should decide for them.
-          teardownMeter();
-          stopStatsWatchdog();
-          setMediaPlaybackState("none");
-          setStatus(`Waiting for "${selectedBroadcasterName}" to come back...`, "reconnecting");
-          triggerConnectionLostAlert();
-        }
-      } else {
-        setStatus("Choose a broadcaster below", "");
-        renderBroadcasterList(msg.broadcasters);
-        showPicker();
-      }
-    } else if (msg.type === "broadcaster-gone" && msg.id === selectedBroadcasterId) {
-      if (lsPc) { lsPc.close(); lsPc = null; }
-      teardownMeter();
-      stopStatsWatchdog();
-      setMediaPlaybackState("none");
-      // Same reasoning as above — stay locked onto this broadcaster and keep
-      // waiting rather than bouncing back to the picker automatically.
-      setStatus(`"${selectedBroadcasterName}" disconnected — waiting for it to come back...`, "error");
-      triggerConnectionLostAlert();
-      ws.send(JSON.stringify({ type: "list-broadcasters" }));
-    } else if (msg.type === "offer") {
-      await handleIncomingOffer({ type: "offer", sdp: msg.sdp });
-    } else if (msg.type === "ice") {
-      if (lsPc && msg.candidate) {
-        try { await lsPc.addIceCandidate(msg.candidate); } catch {}
-      }
-    }
-  };
-
-  ws.onclose = () => {
-    stopHeartbeat();
-    maybeShowOpenServerPageBtn();
-    if (shouldStayConnected) scheduleReconnect(false);
-  };
-  ws.onerror = () => ws.close();
-}
-
-// Shared by both signaling modes: the WebRTC mechanics of the listener's
-// connection (ontrack routing, data channel, connection-state lifecycle) are
-// identical regardless of how the offer/answer was exchanged — only that
-// exchange itself, and how "connection genuinely lost" gets handled,
-// actually differ. `conn` becomes `lsPc` in the caller.
-function attachLsConnectionHandlers(conn) {
-  conn.ontrack = (e) => {
-    if (e.track.kind === "video") {
-      const videoEl = document.getElementById("remoteVideoEl");
-      videoEl.srcObject = e.streams[0];
-      videoEl.classList.remove("hidden");
-      return;
-    }
-    audioEl.srcObject = e.streams[0];
-    audioEl.muted = false;
-    audioEl.volume = 1;
-    if (signalingMethod !== "manual") reconnectAttempt = 0;
-    audioEl.play().catch((err) => {
-      console.warn("audio.play() blocked:", err.message);
-      setStatus("Tap the page to enable audio playback", "reconnecting");
-    });
-    setupMeter(e.streams[0]);
-    if (signalingMethod === "manual") startStatsWatchdog();
-  };
-
-  conn.ondatachannel = (e) => {
-    setupLsControlChannel(e.channel);
-  };
-
-  conn.onconnectionstatechange = () => {
-    if (conn.connectionState === "connected") {
-      connectBtn.classList.add("hidden");
-      if (signalingMethod === "manual") {
-        document.getElementById("manualLsFlow").classList.add("hidden");
-      } else {
-        hidePicker();
-      }
-      stopConnectionLostAlert();
-      // Don't rely solely on the <audio> element's 'playing' event to restore
-      // the live UI — after an ICE-restart recovery (same track, same
-      // element, connectivity just resumes underneath it), the element's own
-      // playback state machine may never perceive an interruption at all, so
-      // 'playing' can simply never re-fire even though audio is flowing again.
-      // connectionState actually reaching "connected" is the reliable signal.
-      if (audioEl.srcObject) {
-        setStatus(`🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
-        setupMeter(audioEl.srcObject);
-        setMediaPlaybackState("playing");
-        showStatusNotification("live");
-        if (!statsWatchdogInterval) startStatsWatchdog();
-      }
-    } else if (conn.connectionState === "disconnected") {
-      // Transient in both modes — WebRTC's own ICE consent-freshness checks
-      // can self-heal this on their own. Relay mode additionally has the
-      // broadcaster actively attempting restartIce(); manual mode doesn't
-      // (see the broadcaster's handler for why), hence the different wording.
-      if (signalingMethod === "manual") {
-        setStatus("⚠️ Connection interrupted — waiting to see if it recovers...", "reconnecting");
-      } else {
-        setStatus("⚠️ Network hiccup — attempting to recover...", "reconnecting");
-      }
-    } else if (["failed", "closed"].includes(conn.connectionState)) {
-      document.getElementById("remoteVideoEl").classList.add("hidden");
-      connectBtn.classList.remove("hidden");
-      // Tear this down immediately, right here — don't rely on scheduleReconnect()
-      // to eventually do it. It's delayed (runs after a backoff timer) and, if
-      // shouldStayConnected is ever false, skips it entirely — leaving the VU
-      // meter rendering stale/leftover audio data in the meantime, which looks
-      // exactly like audio is still coming in when the connection is actually dead.
-      teardownMeter();
-      stopStatsWatchdog();
-      setMediaPlaybackState("none");
-      // Actually close it, and drop our reference — signalingState stays
-      // "stable" even once connectionState reaches "failed" (only SDP
-      // negotiation changes signalingState, not connectivity loss). Without
-      // this, handleIncomingOffer()'s reuse-check (lsPc && signalingState
-      // !== "closed") stays true forever, so a later fresh offer would
-      // incorrectly try to reuse this dead connection instead of building a
-      // new one — signaling completes fine, but audio never actually resumes.
-      if (conn === lsPc) { lsPc.close(); lsPc = null; }
-      if (signalingMethod === "manual") {
-        setStatus("Broadcaster disconnected — scan a new QR to reconnect", "error");
-        triggerConnectionLostAlert();
-      } else if (shouldStayConnected) {
-        scheduleReconnect(false);
-      }
-    }
-  };
-}
-
-function startManualListen() {
-  connectBtn.disabled = true;
-  selectedBroadcasterName = "the broadcaster"; // no name exchange in manual mode; keeps existing status strings sensible
-  setStatus("Manual signaling — scan or paste the broadcaster's offer", "");
-  document.getElementById("manualLsFlow").classList.remove("hidden");
-  document.getElementById("manualLsOfferStep").classList.remove("hidden");
-  document.getElementById("manualLsAnswerStep").classList.add("hidden");
-  ensureAlertAudioContext();
-  requestWakeLock();
-  iceServers = buildIceServers();
-  ensureNotificationPermission().then((granted) => {
-    if (granted) showStatusNotification("connecting");
-  });
-}
-
-async function handleIncomingOffer(offer) {
-  if (signalingMethod !== "manual" && lsPc && lsPc.signalingState !== "closed") {
-    // Renegotiation/restart offer on our EXISTING relay-mode connection (e.g.
-    // the broadcaster called restartIce() after a network blip) — reuse it
-    // rather than tearing down and losing local talkback/video state. Manual
-    // mode never reaches this branch: it has no reconnection (see
-    // attachLsConnectionHandlers), so every scan/paste always builds fresh.
-    await lsPc.setRemoteDescription(offer);
-    const answer = await lsPc.createAnswer();
-    await lsPc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
-    return;
-  }
-
-  // First-ever offer for this session (manual mode: always this branch).
-  if (lsPc) lsPc.close();
-  lsPc = new RTCPeerConnection({ iceServers });
-  attachLsConnectionHandlers(lsPc);
-
-  if (signalingMethod === "manual") {
-    manualLsControlChannel = null;
-    stopManualHeartbeat();
-    videoRequested = false;
-    showVideoBtn.disabled = true;
-    showVideoBtn.textContent = "📹 Show Video";
-    remoteVideoEl.classList.add("hidden");
-    remoteVideoEl.srcObject = null;
-  } else {
-    lsPc.onicecandidate = (e) => {
-      if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
-      }
-    };
-  }
-
-  await lsPc.setRemoteDescription(offer);
-  await setupTalkback(lsPc);
-
-  if (signalingMethod === "manual") {
-    setStatus("Offer received. Generating answer (this can take a few seconds)...", "");
-    const answer = await lsPc.createAnswer();
-    await lsPc.setLocalDescription(answer);
-    await waitForIceGathering(lsPc);
-
-    const answerBytes = await encodeToBytes(toPlainDescription(lsPc.localDescription));
-    document.getElementById("manualLsAnswerText").value = toBackupText(toPlainDescription(lsPc.localDescription));
-    document.getElementById("manualLsOfferStep").classList.add("hidden");
-    document.getElementById("manualLsAnswerStep").classList.remove("hidden");
-    setStatus("Show this QR back to the broadcaster", "");
-    try {
-      await renderQR("manualLsQrImg", answerBytes);
-    } catch (e) {
-      setStatus("Answer too large for QR — use the text backup below.", "error");
-    }
-    connectBtn.disabled = false;
-  } else {
-    const answer = await lsPc.createAnswer();
-    await lsPc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
-  }
-}
-
-document.getElementById("manualLsScanBtn").addEventListener("click", () => {
-  scanQR(document.getElementById("manualLsVideo"), document.getElementById("manualLsSwitchCamBtn"), async (bytes) => {
-    await handleIncomingOffer(await decodeFromBytes(bytes));
-  });
-});
-
-document.getElementById("manualLsPasteBtn").addEventListener("click", async () => {
-  const text = document.getElementById("manualLsPasteText").value.trim();
-  if (!text) return;
-  const bytes = await backupTextToBytes(text);
-  await handleIncomingOffer(await decodeFromBytes(bytes));
-});
-
-document.getElementById("manualLsCopyAnswerBtn").addEventListener("click", (e) => {
-  copyToClipboard(document.getElementById("manualLsAnswerText").value, e.target);
-});
-
-connectBtn.addEventListener("click", () => {
-  if (signalingMethod === "manual") startManualListen();
-  else connect();
-});
-wakeToggle.addEventListener("change", () => {
-  if (wakeToggle.checked && shouldStayConnected) requestWakeLock();
-  else releaseWakeLock();
-});
-
-setupMediaSession();
-resizeMeterCanvas();
-clearMeterCanvas();
-
-// ============================================================
-// PWA install prompt + service worker (shared by both modes)
-// ============================================================
-let deferredPrompt = null;
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  installBtn.style.display = "inline-block";
-});
-installBtn.addEventListener("click", async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
-  deferredPrompt = null;
-  installBtn.style.display = "none";
-});
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch((err) => {
-      console.warn("Service worker registration failed:", err);
-    });
-  });
-}
-
-// ---------- Auto-resume a genuinely-interrupted relay-mode listener session ----------
-// If the page reloads mid-session (some Android PWAs get reloaded by the OS
-// after a network change/suspend, outside our own JS control — a real
-// navigation, not a WebSocket-level reconnect) you'd otherwise land back on
-// the bare mode picker with no obvious sign anything was ever connected.
-// chooseBroadcaster() persists mode+broadcaster; changeMode() clears it on an
-// explicit, intentional exit — so anything still here on load means the
-// session was cut short unexpectedly, not deliberately ended.
-(function autoResumeSession() {
-  if (signalingMethod !== "relay") return; // manual/QR mode can't auto-resume without a fresh QR anyway
-  const lastMode = localStorage.getItem(LAST_SESSION_KEYS.mode);
-  const lastBroadcasterId = localStorage.getItem(LAST_SESSION_KEYS.broadcasterId);
-  const lastBroadcasterName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
-  if (lastMode !== "listen" || !lastBroadcasterId) return;
-  if (!getServerAddress()) return; // nothing to reconnect to without an address
-
-  selectMode("listen");
-  selectedBroadcasterId = lastBroadcasterId;
-  selectedBroadcasterName = lastBroadcasterName;
-  setStatus(`Resuming session with "${lastBroadcasterName}"...`, "reconnecting");
-  connect();
-})();
-
 </script>
 </body>
 </html>
