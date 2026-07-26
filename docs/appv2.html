@@ -420,14 +420,6 @@
     <button id="pushToTalkBtn" class="hidden" style="width:100%; margin-top:14px; padding:18px; font-size:1.1rem; user-select:none; touch-action:none;">🎙️ Hold to Talk</button>
     <div id="talkbackStatus" style="font-size:0.8rem; color:#666; margin-top:4px;"></div>
 
-    <button id="showVideoBtn" disabled style="width:100%; margin-top:10px;">📹 Show Video</button>
-    <select id="videoResolutionSelect" style="width:100%; margin-top:6px; padding:6px;">
-      <option value="low">Low (320×240)</option>
-      <option value="medium" selected>Medium (640×480)</option>
-      <option value="high">High (1280×720)</option>
-    </select>
-    <video id="remoteVideoEl" autoplay playsinline class="hidden" style="width:100%; border-radius:8px; margin-top:10px; background:#000;"></video>
-
     <div id="pickerWrap" style="display:none; margin-top:20px; text-align:left;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <strong style="font-size:0.9rem;">Choose a broadcaster:</strong>
@@ -466,6 +458,14 @@
       <div id="meterLabel"><span id="meterDb">-∞ dB</span><span id="meterPeakLabel">peak: -∞ dB</span></div>
       <canvas id="meterCanvas"></canvas>
     </div>
+
+    <button id="showVideoBtn" disabled style="width:100%; margin-top:10px;">📹 Show Video</button>
+    <select id="videoResolutionSelect" style="width:100%; margin-top:6px; padding:6px;">
+      <option value="low">Low (320×240)</option>
+      <option value="medium" selected>Medium (640×480)</option>
+      <option value="high">High (1280×720)</option>
+    </select>
+    <video id="remoteVideoEl" autoplay playsinline class="hidden" style="width:100%; border-radius:8px; margin-top:10px; background:#000;"></video>
   </div>
 
 <script>
@@ -2114,9 +2114,19 @@ function openSocket() {
           setLsState("lost", `Waiting for "${selectedBroadcasterName}" to come back...`);
         }
       } else {
-        setStatus("Choose a broadcaster below", "");
-        renderBroadcasterList(msg.broadcasters);
-        showPicker();
+        // Skip the picker entirely when there's nothing to actually choose
+        // between: a remembered preference exists and it's the one and only
+        // broadcaster currently available. Any ambiguity — multiple options,
+        // or the preferred one isn't among them — still shows the picker.
+        const preferredName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+        const isOnlyThePreferred = preferredName && msg.broadcasters.length === 1 && msg.broadcasters[0].name === preferredName;
+        if (isOnlyThePreferred) {
+          chooseBroadcaster(msg.broadcasters[0].id, msg.broadcasters[0].name);
+        } else {
+          setStatus("Choose a broadcaster below", "");
+          renderBroadcasterList(msg.broadcasters);
+          showPicker();
+        }
       }
     } else if (msg.type === "broadcaster-gone" && msg.id === selectedBroadcasterId) {
       if (lsPc) { lsPc.close(); lsPc = null; }
@@ -2347,11 +2357,13 @@ if ("serviceWorker" in navigator) {
   if (lastMode !== "listen" || !lastBroadcasterId) return;
   if (!getServerAddress()) return; // nothing to reconnect to without an address
 
-  selectMode("listen");
   selectedBroadcasterId = lastBroadcasterId;
   selectedBroadcasterName = lastBroadcasterName;
+  // selectMode() now auto-connects in relay mode — set the broadcaster info
+  // first so it's already in place once that connection completes, then
+  // override the generic "Connecting..." status with a more specific one.
+  selectMode("listen");
   setStatus(`Resuming session with "${lastBroadcasterName}"...`, "reconnecting");
-  connect();
 })();
 
 
@@ -2443,6 +2455,11 @@ function selectMode(m) {
   broadcastSection.style.display = m === "broadcast" ? "block" : "none";
   listenSection.style.display = m === "listen" ? "block" : "none";
   document.body.classList.add("session-active");
+  // Relay mode has no scan/paste step to wait on, unlike manual — skip the
+  // extra tap and go straight to fetching the broadcaster list. If the
+  // server address is empty, connect() already handles that (shows an
+  // error, leaves the Connect button available as a fallback to retry).
+  if (m === "listen" && signalingMethod === "relay") connect();
 }
 
 function changeMode() {
