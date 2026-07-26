@@ -12,14 +12,14 @@
 //   Let's Encrypt cert, or a PaaS like Fly.io/Render that provisions HTTPS
 //   automatically).
 //
-// The server itself never touches audio, and holds no shared secrets —
-// it only relays small JSON signaling messages so devices can set up direct
-// (or TURN-relayed) WebRTC connections with each other. Access token and
-// STUN/TURN config now live entirely client-side (see app.html) — share a
-// URL with those baked in as query params and the receiving browser caches
-// them in localStorage on first load.
-
-const express = require("express");
+// The server itself never touches audio — it only relays small JSON
+// signaling messages so devices can set up direct (or TURN-relayed) WebRTC
+// connections with each other. The access token is generated/persisted here
+// (see ensureAccessToken below); STUN/TURN config is optional and, if
+// present, loaded from certs/turn-config.json (see buildIceServerConfig) —
+// otherwise relay-mode clients still configure it themselves in-app, and
+// manual/QR mode always does, since it never talks to this server at all.
+//
 const https = require("https");
 const http = require("http");
 const { WebSocketServer } = require("ws");
@@ -51,6 +51,74 @@ function ensureAccessToken() {
   return token;
 }
 const ACCESS_TOKEN = ensureAccessToken();
+const TURN_CONFIG_PATH = path.join(CERT_DIR, "turn-config.json");
+
+// Optional: serve STUN/TURN config to clients over the WebSocket itself, so
+// they don't need to manually fill in Advanced STUN/TURN (or have it baked
+// into a shareable link). Only reaches relay-mode clients — manual/QR mode
+// never talks to this server, so it still needs its own local config.
+//
+// Loaded from certs/turn-config.json (alongside the cert and access token —
+// same "generated/persisted config lives here" pattern), not env vars, so
+// it's one file to edit rather than several vars to keep in sync. Expected
+// shape:
+//   {
+//     "stunUrls": ["stun:example.com:3478"],
+//     "turnUrls": ["turn:example.com:3478"],
+//     "turnSecret": "shared secret matching your TURN server's static-auth-secret",
+//     "turnCredentialTtlSeconds": 86400
+//   }
+// TURN needs credentials, two ways:
+//   - Ephemeral (recommended): "turnSecret" matching your TURN server's
+//     static-auth-secret (coturn: use-auth-secret + static-auth-secret in
+//     turnserver.conf). A fresh, time-limited credential is generated per
+//     connection — nothing long-lived to leak.
+//   - Static: "turnStaticUsername" + "turnStaticCredential" directly —
+//     simpler, but the same credential goes to every client indefinitely
+//     (fine for e.g. a free TURN service that only offers static creds).
+// File missing or unparsable just means no STUN/TURN is served — not fatal.
+function toUrlArray(value) {
+  if (Array.isArray(value)) return value.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(",").map((s) => s.trim()).filter(Boolean);
+  return [];
+}
+
+function loadTurnConfig() {
+  if (!fs.existsSync(TURN_CONFIG_PATH)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(TURN_CONFIG_PATH, "utf8"));
+  } catch (err) {
+    console.warn(`Could not parse ${TURN_CONFIG_PATH}: ${err.message} — STUN/TURN will not be served.`);
+    return {};
+  }
+}
+
+const turnConfig = loadTurnConfig();
+const STUN_URLS = toUrlArray(turnConfig.stunUrls);
+const TURN_URLS = toUrlArray(turnConfig.turnUrls);
+const TURN_SECRET = turnConfig.turnSecret || null;
+const TURN_STATIC_USERNAME = turnConfig.turnStaticUsername || null;
+const TURN_STATIC_CREDENTIAL = turnConfig.turnStaticCredential || null;
+const TURN_CREDENTIAL_TTL_SECONDS = Number(turnConfig.turnCredentialTtlSeconds || 86400);
+
+function buildIceServerConfig() {
+  const servers = [];
+  if (STUN_URLS.length) servers.push({ urls: STUN_URLS });
+
+  if (TURN_URLS.length) {
+    if (TURN_SECRET) {
+      // coturn-style ephemeral credential: username is an expiry timestamp,
+      // credential is base64(HMAC-SHA1(secret, username)).
+      const expiry = Math.floor(Date.now() / 1000) + TURN_CREDENTIAL_TTL_SECONDS;
+      const username = String(expiry);
+      const credential = crypto.createHmac("sha1", TURN_SECRET).update(username).digest("base64");
+      servers.push({ urls: TURN_URLS, username, credential });
+    } else if (TURN_STATIC_USERNAME && TURN_STATIC_CREDENTIAL) {
+      servers.push({ urls: TURN_URLS, username: TURN_STATIC_USERNAME, credential: TURN_STATIC_CREDENTIAL });
+    }
+  }
+  return servers;
+}
 
 function getLanAddresses() {
   const nets = os.networkInterfaces();
@@ -153,13 +221,13 @@ wss.on("connection", (ws, req) => {
         id = String(nextBroadcasterId++);
         const name = (msg.name || "Unnamed device").slice(0, 60);
         broadcasters.set(id, { ws, name });
-        send(ws, { type: "welcome", id });
+        send(ws, { type: "welcome", id, iceServers: buildIceServerConfig() });
         console.log(`Broadcaster connected: "${name}" (${id})`);
         pushBroadcasterListToAllListeners();
       } else if (role === "listener") {
         id = String(nextListenerId++);
         listeners.set(id, { ws, broadcasterId: null });
-        send(ws, { type: "welcome", id });
+        send(ws, { type: "welcome", id, iceServers: buildIceServerConfig() });
         send(ws, { type: "broadcaster-list", broadcasters: broadcasterList() });
         console.log(`Listener connected: ${id}`);
       }
@@ -265,5 +333,19 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`${TOKEN_PATH} (survives restarts); set ACCESS_TOKEN yourself to pin a specific`);
   console.log(`value instead. Share the URL above (with ?token=...) — app.html's "Copy`);
   console.log(`shareable link" bakes it in the same way it does the server address.`);
+
+  if (STUN_URLS.length || TURN_URLS.length) {
+    console.log(`\nServing STUN/TURN config to relay-mode clients over the WebSocket`);
+    console.log(`(from ${TURN_CONFIG_PATH} — STUN: ${STUN_URLS.length || "none"}, TURN: ${TURN_URLS.length || "none"}` +
+      `${TURN_URLS.length ? `, credentials: ${TURN_SECRET ? "ephemeral" : "static"}` : ""}).`);
+  } else {
+    console.log(`\nNo TURN config found at ${TURN_CONFIG_PATH} — relay-mode clients still`);
+    console.log(`need their own Advanced STUN/TURN set locally (Settings) if they're outside`);
+    console.log(`your LAN. To serve it from here instead, create that file:`);
+    console.log(`  {`);
+    console.log(`    "turnUrls": ["turn:your-turn-host:3478"],`);
+    console.log(`    "turnSecret": "shared secret matching your TURN server's static-auth-secret"`);
+    console.log(`  }`);
+  }
   console.log("");
 });
