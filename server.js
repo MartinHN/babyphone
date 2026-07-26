@@ -20,6 +20,7 @@
 // otherwise relay-mode clients still configure it themselves in-app, and
 // manual/QR mode always does, since it never talks to this server at all.
 //
+const express = require("express");
 const https = require("https");
 const http = require("http");
 const { WebSocketServer } = require("ws");
