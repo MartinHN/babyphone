@@ -259,8 +259,12 @@
     </details>
 
     <div class="field-row">
-      <button id="shareLinkBtn" class="w-full">🔗 Copy shareable link (bakes in the fields above)</button>
+      <div style="display:flex; gap:8px;">
+        <button id="shareLinkBtn" style="flex:1;">🔗 Copy link</button>
+        <button id="shareQrBtn" style="flex:1;">📱 Share via QR</button>
+      </div>
       <div id="shareLinkStatus" style="font-size:0.8rem; color:#666; margin-top:6px;"></div>
+      <div id="shareQrImg" class="hidden" style="margin-top:8px; text-align:center;"></div>
     </div>
 
     <h2 class="settings-heading">Audio</h2>
@@ -465,6 +469,7 @@
       <option value="medium" selected>Medium (640×480)</option>
       <option value="high">High (1280×720)</option>
     </select>
+    <select id="videoCameraSelect" class="hidden" style="width:100%; margin-top:6px; padding:6px;"></select>
     <video id="remoteVideoEl" autoplay playsinline class="hidden" style="width:100%; border-radius:8px; margin-top:10px; background:#000;"></video>
   </div>
 
@@ -497,6 +502,8 @@ const turnUsernameInput = document.getElementById("turnUsername");
 const turnCredentialInput = document.getElementById("turnCredential");
 const shareLinkBtn = document.getElementById("shareLinkBtn");
 const shareLinkStatus = document.getElementById("shareLinkStatus");
+const shareQrBtn = document.getElementById("shareQrBtn");
+const shareQrImg = document.getElementById("shareQrImg");
 const changeModeBtn = document.getElementById("changeModeBtn");
 const modeSelectWrap = document.getElementById("modeSelectWrap");
 const broadcastSection = document.getElementById("broadcastSection");
@@ -504,16 +511,45 @@ const listenSection = document.getElementById("listenSection");
 
 let mode = null; // null | "broadcast" | "listen"
 
+// ---------- Persisted user config ----------
+// Every localStorage-backed value lives here, under one object, so it's
+// clear at a glance what's remembered across sessions and what its actual
+// storage key is — instead of the same information being scattered across
+// half a dozen ad-hoc *_KEY constants declared next to whatever feature
+// happens to use them.
+const userConf = {
+  KEYS: {
+    serverAddr: "micStreamServerAddress",
+    accessToken: "micStreamAccessToken",
+    stunUrls: "micStreamStunUrls",
+    turnUrls: "micStreamTurnUrls",
+    turnUsername: "micStreamTurnUsername",
+    turnCredential: "micStreamTurnCredential",
+    signalingMethod: "micStreamSignalingMethod",
+    deviceName: "micStreamDeviceName",
+    listenerVoxEnabled: "micStreamVoxEnabled",
+    listenerVoxThreshold: "micStreamVoxThreshold",
+    lastMode: "micStreamLastMode",
+    lastBroadcasterId: "micStreamLastBroadcasterId",
+    lastBroadcasterName: "micStreamLastBroadcasterName",
+    preferredCameraId: "micStreamPreferredCameraId",
+    preferredMonitorCameraId: "micStreamPreferredMonitorCameraId",
+  },
+  get(name) { return localStorage.getItem(this.KEYS[name]); },
+  set(name, value) { localStorage.setItem(this.KEYS[name], value); },
+  remove(name) { localStorage.removeItem(this.KEYS[name]); },
+};
+
 // ---------- Config fields: bootstrapped from URL query params on first ----------
 // visit, then cached in localStorage — share a URL once and the recipient ----------
 // never needs it again. No server-side secrets/env vars involved at all. ----------
 const FIELD_KEYS = {
-  addr: ["serverAddr", "micStreamServerAddress"],
-  token: ["accessToken", "micStreamAccessToken"],
-  stun: ["stunUrls", "micStreamStunUrls"],
-  turn: ["turnUrls", "micStreamTurnUrls"],
-  turnUser: ["turnUsername", "micStreamTurnUsername"],
-  turnCred: ["turnCredential", "micStreamTurnCredential"],
+  addr: ["serverAddr", userConf.KEYS.serverAddr],
+  token: ["accessToken", userConf.KEYS.accessToken],
+  stun: ["stunUrls", userConf.KEYS.stunUrls],
+  turn: ["turnUrls", userConf.KEYS.turnUrls],
+  turnUser: ["turnUsername", userConf.KEYS.turnUsername],
+  turnCred: ["turnCredential", userConf.KEYS.turnCredential],
 };
 const fieldEls = {
   serverAddr: serverAddrInput,
@@ -545,7 +581,7 @@ const fieldEls = {
   // directly rather than referencing it.
   if (addrFromUrl) {
     document.getElementById("methodRelay").checked = true;
-    localStorage.setItem("micStreamSignalingMethod", "relay");
+    userConf.set("signalingMethod", "relay");
   }
 
   // Default the address field to same-origin if nothing saved/shared yet,
@@ -573,9 +609,20 @@ for (const [elId, storageKey] of Object.values(FIELD_KEYS)) {
 // connected — see serverIceServers below and buildIceServers() in the
 // Common section.
 let serverIceServers = [];
+
+// Shared by both the broadcaster and listener WS message handlers — the
+// relay server's "welcome" message optionally carries STUN/TURN config
+// (see server.js's buildIceServerConfig), and applying it is identical
+// regardless of which role received it.
+function applyServerIceServers(msg) {
+  if (Array.isArray(msg.iceServers) && msg.iceServers.length) {
+    serverIceServers = msg.iceServers;
+    iceServers = buildIceServers();
+  }
+}
 let iceServers = buildIceServers();
 
-shareLinkBtn.addEventListener("click", async () => {
+function buildShareUrl() {
   const url = new URL(location.origin + location.pathname);
   if (serverAddrInput.value.trim()) url.searchParams.set("addr", serverAddrInput.value.trim());
   if (accessTokenInput.value.trim()) url.searchParams.set("token", accessTokenInput.value.trim());
@@ -583,12 +630,29 @@ shareLinkBtn.addEventListener("click", async () => {
   if (turnUrlsInput.value.trim()) url.searchParams.set("turn", turnUrlsInput.value.trim());
   if (turnUsernameInput.value.trim()) url.searchParams.set("turnUser", turnUsernameInput.value.trim());
   if (turnCredentialInput.value.trim()) url.searchParams.set("turnCred", turnCredentialInput.value.trim());
+  return url;
+}
+
+shareLinkBtn.addEventListener("click", async () => {
+  const url = buildShareUrl();
+  shareQrImg.classList.add("hidden");
 
   try {
     await navigator.clipboard.writeText(url.toString());
     shareLinkStatus.textContent = "Copied! Whoever opens it gets these fields pre-filled and cached.";
   } catch {
     shareLinkStatus.textContent = url.toString(); // clipboard blocked — show it to copy manually
+  }
+});
+
+shareQrBtn.addEventListener("click", async () => {
+  const url = buildShareUrl();
+  try {
+    await renderTextQR("shareQrImg", url.toString());
+    shareQrImg.classList.remove("hidden");
+    shareLinkStatus.textContent = "Scan with another device's camera to open it there, pre-filled.";
+  } catch (e) {
+    shareLinkStatus.textContent = "QR too dense for these fields — try Copy link instead, or shorten the TURN credential.";
   }
 });
 
@@ -622,9 +686,8 @@ openServerPageBtn.addEventListener("click", () => {
 const methodRelayRadio = document.getElementById("methodRelay");
 const methodManualRadio = document.getElementById("methodManual");
 const relayAddrRow = document.getElementById("relayAddrRow");
-const SIGNALING_METHOD_KEY = "micStreamSignalingMethod";
 
-let signalingMethod = localStorage.getItem(SIGNALING_METHOD_KEY) || "manual";
+let signalingMethod = userConf.get("signalingMethod") || "manual";
 if (signalingMethod === "manual") methodManualRadio.checked = true;
 else methodRelayRadio.checked = true;
 
@@ -634,7 +697,7 @@ document.querySelectorAll('input[name="signalingMethod"]').forEach((radio) => {
   radio.addEventListener("change", () => {
     if (!radio.checked) return;
     signalingMethod = radio.value;
-    localStorage.setItem(SIGNALING_METHOD_KEY, signalingMethod);
+    userConf.set("signalingMethod", signalingMethod);
     applySignalingMethodUI();
   });
 });
@@ -743,10 +806,9 @@ const bcStartBtn = document.getElementById("bcStartBtn");
 const listenersEl = document.getElementById("listeners");
 const deviceNameInput = document.getElementById("deviceName");
 
-const NAME_KEY = "micStreamDeviceName";
-deviceNameInput.value = localStorage.getItem(NAME_KEY) || defaultDeviceName();
+deviceNameInput.value = userConf.get("deviceName") || defaultDeviceName();
 deviceNameInput.addEventListener("change", () => {
-  localStorage.setItem(NAME_KEY, deviceNameInput.value.trim());
+  userConf.set("deviceName", deviceNameInput.value.trim());
 });
 
 function defaultDeviceName() {
@@ -869,17 +931,7 @@ const bcListenerState = new Map(); // key -> "connecting" | "live" | "lost"
 
 function setBcListenerState(key, state, message) {
   bcListenerState.set(key, state);
-  renderBcListenerState(key, message);
-}
-
-function clearBcListenerState(key) {
-  bcListenerState.delete(key);
-  renderListenerCount();
-}
-
-function renderBcListenerState(key, message) {
   if (key === "manual") {
-    const state = bcListenerState.get(key);
     if (state === "connecting") bcSetStatus(message || "Connecting...", "live");
     else if (state === "live") bcSetStatus(message || "Listener connected", "live");
     else if (state === "lost") bcSetStatus(message || "Listener disconnected — they'll need to scan a new QR to reconnect", "error");
@@ -890,6 +942,11 @@ function renderBcListenerState(key, message) {
     // health (bcConnectSignaling/bcScheduleReconnect), not any one listener.
     renderListenerCount();
   }
+}
+
+function clearBcListenerState(key) {
+  bcListenerState.delete(key);
+  renderListenerCount();
 }
 
 function renderListenerCount() {
@@ -1014,10 +1071,7 @@ function bcConnectSignaling(addr) {
       bcSetStatus(msg.message, "error");
       bcWs.close();
     } else if (msg.type === "welcome") {
-      if (Array.isArray(msg.iceServers) && msg.iceServers.length) {
-        serverIceServers = msg.iceServers;
-        iceServers = buildIceServers();
-      }
+      applyServerIceServers(msg);
     } else if (msg.type === "listener-join") {
       await bcCreatePeerForListener(msg.id);
     } else if (msg.type === "listener-leave") {
@@ -1166,7 +1220,7 @@ async function bcCreatePeerForListener(id) {
 // the relay server recognizing any message type — only on the WebRTC
 // connection itself, which exists the same way in both modes.
 const bcControlChannels = new Map(); // id -> RTCDataChannel
-const bcVideoState = new Map(); // id -> { stream, sender }
+const bcVideoState = new Map(); // id -> { stream, sender, resolution }
 
 function getBcPc(id) {
   return id === "manual" ? manualBcPc : bcPeers.get(id);
@@ -1178,8 +1232,25 @@ const VIDEO_RESOLUTION_PRESETS = {
   high: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24 } },
 };
 
-function getCameraStream(resolution) {
-  return navigator.mediaDevices.getUserMedia({ video: VIDEO_RESOLUTION_PRESETS[resolution] || VIDEO_RESOLUTION_PRESETS.medium });
+function getCameraStream(resolution, deviceId) {
+  const constraints = { ...(VIDEO_RESOLUTION_PRESETS[resolution] || VIDEO_RESOLUTION_PRESETS.medium) };
+  if (deviceId) constraints.deviceId = { exact: deviceId };
+  return navigator.mediaDevices.getUserMedia({ video: constraints });
+}
+
+// Enumerate the broadcaster's own video input devices, for the listener to
+// pick from remotely. Labels are only populated once camera permission has
+// already been granted — which primeVideoPermission() (called at broadcast
+// start) already takes care of, so this should have real labels by the time
+// a listener actually opens the picker.
+async function bcEnumerateCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((d) => d.kind === "videoinput").map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camera ${i + 1}` }));
+  } catch (err) {
+    console.warn("Could not enumerate cameras:", err.name, err.message);
+    return [];
+  }
 }
 
 async function bcHandleVideoRequest(id, show, resolution) {
@@ -1190,8 +1261,9 @@ async function bcHandleVideoRequest(id, show, resolution) {
   if (show) {
     if (existing) return; // already sending
     let stream;
+    const deviceId = userConf.get("preferredMonitorCameraId") || undefined;
     try {
-      stream = await getCameraStream(resolution);
+      stream = await getCameraStream(resolution, deviceId);
     } catch (err) {
       console.warn("Camera unavailable for video request:", err.name, err.message);
       const channel = bcControlChannels.get(id);
@@ -1202,7 +1274,7 @@ async function bcHandleVideoRequest(id, show, resolution) {
     }
     const track = stream.getVideoTracks()[0];
     const sender = pcForId.addTrack(track, stream);
-    bcVideoState.set(id, { stream, sender });
+    bcVideoState.set(id, { stream, sender, resolution });
     incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
     // Adding a track fires 'negotiationneeded' automatically — handled below.
   } else {
@@ -1215,20 +1287,22 @@ async function bcHandleVideoRequest(id, show, resolution) {
   }
 }
 
-// Switching resolution while video is already flowing swaps the underlying
-// MediaStreamTrack via replaceTrack() on the same sender — this does NOT
-// change the transceiver's direction or m-line, so no renegotiation round-trip
-// is needed at all (unlike turning video fully on/off).
+// Switching resolution or camera while video is already flowing swaps the
+// underlying MediaStreamTrack via replaceTrack() on the same sender — this
+// does NOT change the transceiver's direction or m-line, so no renegotiation
+// round-trip is needed at all (unlike turning video fully on/off).
 async function bcSwitchVideoResolution(id, resolution) {
   const existing = bcVideoState.get(id);
   if (!existing) return; // video not currently active — nothing to switch live
   const incomingEl = document.getElementById("talkbackIncoming");
   try {
-    const newStream = await getCameraStream(resolution);
+    const deviceId = userConf.get("preferredMonitorCameraId") || undefined;
+    const newStream = await getCameraStream(resolution, deviceId);
     const newTrack = newStream.getVideoTracks()[0];
     const oldStream = existing.stream;
     await existing.sender.replaceTrack(newTrack);
     existing.stream = newStream;
+    existing.resolution = resolution;
     oldStream.getTracks().forEach((t) => t.stop());
     incomingEl.textContent = `📹 Sending video to listener (${resolution})`;
   } catch (err) {
@@ -1236,8 +1310,40 @@ async function bcSwitchVideoResolution(id, resolution) {
   }
 }
 
+// Switching which physical camera is used — same live-swap approach as
+// resolution switching, reusing whatever resolution is already in use.
+// Persisted distinctly from the listener's own QR-scanning camera choice
+// (userConf.preferredCameraId) — this is a completely different device
+// serving a completely different purpose (streaming to a listener, not
+// scanning a code on this device).
+async function bcSwitchCamera(id, deviceId) {
+  userConf.set("preferredMonitorCameraId", deviceId);
+  const existing = bcVideoState.get(id);
+  if (!existing) return; // not currently showing — just remember the preference for next time
+  const incomingEl = document.getElementById("talkbackIncoming");
+  try {
+    const newStream = await getCameraStream(existing.resolution || "medium", deviceId);
+    const newTrack = newStream.getVideoTracks()[0];
+    const oldStream = existing.stream;
+    await existing.sender.replaceTrack(newTrack);
+    existing.stream = newStream;
+    oldStream.getTracks().forEach((t) => t.stop());
+    incomingEl.textContent = `📹 Sending video to listener (${existing.resolution || "medium"})`;
+  } catch (err) {
+    console.warn("Camera switch failed:", err.name, err.message);
+    const channel = bcControlChannels.get(id);
+    if (channel && channel.readyState === "open") {
+      channel.send(JSON.stringify({ type: "video-unavailable" }));
+    }
+  }
+}
+
 function setupBcControlChannel(channel, id) {
   bcControlChannels.set(id, channel);
+  channel.onopen = async () => {
+    const cameras = await bcEnumerateCameras();
+    if (channel.readyState === "open") channel.send(JSON.stringify({ type: "camera-list", cameras }));
+  };
   channel.onclose = () => { bcControlChannels.delete(id); };
   channel.onmessage = async (e) => {
     let msg;
@@ -1248,6 +1354,8 @@ function setupBcControlChannel(channel, id) {
       await bcHandleVideoRequest(id, !!msg.show, msg.resolution || "medium");
     } else if (msg.type === "video-resolution") {
       await bcSwitchVideoResolution(id, msg.resolution);
+    } else if (msg.type === "switch-camera") {
+      await bcSwitchCamera(id, msg.deviceId);
     } else if (msg.type === "answer") {
       // Renegotiation answer, in response to an offer we sent below.
       const pcForId = getBcPc(id);
@@ -1326,21 +1434,23 @@ document.getElementById("manualBcCopyOfferBtn").addEventListener("click", (e) =>
   copyToClipboard(document.getElementById("manualBcOfferText").value, e.target);
 });
 
+// Shared by both the scan and paste paths below — the only actual
+// difference between them is how the bytes get obtained.
+async function applyManualBcAnswer(bytes) {
+  const answer = await decodeFromBytes(bytes);
+  await manualBcPc.setRemoteDescription(answer);
+  bcSetStatus("Answer applied. Connecting...", "live");
+}
+
 document.getElementById("manualBcScanBtn").addEventListener("click", () => {
-  scanQR(document.getElementById("manualBcVideo"), document.getElementById("manualBcSwitchCamBtn"), async (bytes) => {
-    const answer = await decodeFromBytes(bytes);
-    await manualBcPc.setRemoteDescription(answer);
-    bcSetStatus("Answer applied. Connecting...", "live");
-  });
+  scanQR(document.getElementById("manualBcVideo"), document.getElementById("manualBcSwitchCamBtn"), applyManualBcAnswer);
 });
 
 document.getElementById("manualBcPasteBtn").addEventListener("click", async () => {
   const text = document.getElementById("manualBcPasteText").value.trim();
   if (!text) return;
   const bytes = await backupTextToBytes(text);
-  const answer = await decodeFromBytes(bytes);
-  await manualBcPc.setRemoteDescription(answer);
-  bcSetStatus("Answer applied. Connecting...", "live");
+  await applyManualBcAnswer(bytes);
 });
 
 bcStartBtn.addEventListener("click", () => {
@@ -1369,14 +1479,12 @@ const alertToggle = document.getElementById("alertToggle");
 // ---------- Listener-controlled VOX (voice-activated sending) config ----------
 // The listener owns this setting (enabled + sensitivity), persisted locally,
 // and pushes it to the broadcaster over whichever signaling channel is active.
-const LISTENER_VOX_ENABLED_KEY = "micStreamVoxEnabled";
-const LISTENER_VOX_THRESHOLD_KEY = "micStreamVoxThreshold";
 const listenerVoxToggle = document.getElementById("listenerVoxToggle");
 const voxThresholdSlider = document.getElementById("voxThresholdSlider");
 
-const savedVoxEnabled = localStorage.getItem(LISTENER_VOX_ENABLED_KEY);
+const savedVoxEnabled = userConf.get("listenerVoxEnabled");
 if (savedVoxEnabled !== null) listenerVoxToggle.checked = savedVoxEnabled === "true";
-const savedVoxThreshold = localStorage.getItem(LISTENER_VOX_THRESHOLD_KEY);
+const savedVoxThreshold = userConf.get("listenerVoxThreshold");
 if (savedVoxThreshold !== null) voxThresholdSlider.value = savedVoxThreshold;
 
 function sendVoxConfig() {
@@ -1397,11 +1505,11 @@ function sendVoxConfig() {
 }
 
 listenerVoxToggle.addEventListener("change", () => {
-  localStorage.setItem(LISTENER_VOX_ENABLED_KEY, listenerVoxToggle.checked);
+  userConf.set("listenerVoxEnabled", listenerVoxToggle.checked);
   sendVoxConfig();
 });
 voxThresholdSlider.addEventListener("input", () => {
-  localStorage.setItem(LISTENER_VOX_THRESHOLD_KEY, voxThresholdSlider.value);
+  userConf.set("listenerVoxThreshold", voxThresholdSlider.value);
   sendVoxConfig();
 });
 
@@ -1475,6 +1583,7 @@ let videoRequested = false;
 const showVideoBtn = document.getElementById("showVideoBtn");
 const remoteVideoEl = document.getElementById("remoteVideoEl");
 const videoResolutionSelect = document.getElementById("videoResolutionSelect");
+const videoCameraSelect = document.getElementById("videoCameraSelect");
 
 function setupLsControlChannel(channel) {
   manualLsControlChannel = channel;
@@ -1484,6 +1593,7 @@ function setupLsControlChannel(channel) {
   };
   channel.onclose = () => {
     showVideoBtn.disabled = true;
+    videoCameraSelect.classList.add("hidden");
   };
   channel.onmessage = async (e) => {
     let msg;
@@ -1498,6 +1608,21 @@ function setupLsControlChannel(channel) {
       videoRequested = false;
       showVideoBtn.textContent = "📹 Show Video";
       talkbackStatusEl.textContent = "Broadcaster's camera is unavailable";
+    } else if (msg.type === "camera-list") {
+      // Only worth showing a picker if there's actually a choice to make.
+      videoCameraSelect.innerHTML = "";
+      const cameras = Array.isArray(msg.cameras) ? msg.cameras : [];
+      if (cameras.length < 2) {
+        videoCameraSelect.classList.add("hidden");
+        return;
+      }
+      for (const cam of cameras) {
+        const opt = document.createElement("option");
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label;
+        videoCameraSelect.appendChild(opt);
+      }
+      videoCameraSelect.classList.remove("hidden");
     }
   };
 }
@@ -1520,6 +1645,15 @@ videoResolutionSelect.addEventListener("change", () => {
   // resolution used whenever Show Video is next pressed.
   if (videoRequested && manualLsControlChannel && manualLsControlChannel.readyState === "open") {
     manualLsControlChannel.send(JSON.stringify({ type: "video-resolution", resolution: videoResolutionSelect.value }));
+  }
+});
+
+videoCameraSelect.addEventListener("change", () => {
+  // Unlike resolution, camera choice is meaningful even before video is first
+  // shown — the broadcaster remembers it (bcSwitchCamera) for whenever video
+  // does start, so this is safe to send regardless of videoRequested.
+  if (manualLsControlChannel && manualLsControlChannel.readyState === "open") {
+    manualLsControlChannel.send(JSON.stringify({ type: "switch-camera", deviceId: videoCameraSelect.value }));
   }
 });
 
@@ -1573,8 +1707,25 @@ function setupMediaSession() {
       { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
   });
-  navigator.mediaSession.setActionHandler("play", () => connect());
-  navigator.mediaSession.setActionHandler("pause", () => disconnect());
+  // A full play/pause/stop set, not just play/stop — Android's native media
+  // notification (the same style YouTube/Spotify get) expects a complete
+  // control set to render its full UI rather than falling back to something
+  // more minimal. "Pause" mutes local playback only — it deliberately does
+  // NOT tear down the connection, since this is a live monitor: the
+  // watchdog, alarm, and audio pipeline all keep working, so un-pausing is
+  // instant rather than re-establishing a session from scratch.
+  navigator.mediaSession.setActionHandler("play", () => {
+    if (lsPc && lsPc.connectionState === "connected") {
+      audioEl.muted = false;
+      setMediaPlaybackState("playing");
+    } else {
+      connect();
+    }
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    audioEl.muted = true;
+    setMediaPlaybackState("paused");
+  });
   navigator.mediaSession.setActionHandler("stop", () => disconnect());
 }
 
@@ -1664,6 +1815,15 @@ document.addEventListener("visibilitychange", () => {
   // Re-acquire for either session type — Android/iOS often auto-release the
   // wake lock when a tab backgrounds, regardless of which mode was active.
   if (shouldStayConnected || bcShouldStayConnected) requestWakeLock();
+  // iOS Safari in particular can silently pause a background <audio>
+  // element even with MediaSession properly configured and the underlying
+  // connection still perfectly healthy — the WebRTC track itself never
+  // stopped, playback just got suspended. Re-calling play() defensively is
+  // the standard mitigation; it's a harmless no-op if playback never
+  // actually stopped.
+  if (shouldStayConnected && audioEl.srcObject && audioEl.paused) {
+    audioEl.play().catch(() => {});
+  }
   // The reconnect check below is listener-specific (lsPc, scheduleReconnect)
   // — the broadcaster has its own separate WS reconnect, unrelated to tab
   // visibility, so it doesn't belong here.
@@ -1867,11 +2027,7 @@ function startStatsWatchdog() {
           if (signalingMethod === "manual") {
             console.warn("Manual mode: audio stalled and data channel not open — connection appears lost");
             staleStatsCount = 0;
-            setStatus("⚠️ Connection appears lost — ask the broadcaster to restart and scan a new QR", "error");
-            teardownMeter();
-            stopStatsWatchdog();
-            setMediaPlaybackState("none");
-            triggerConnectionLostAlert();
+            setLsState("lost", "⚠️ Connection appears lost — ask the broadcaster to restart and scan a new QR");
             return;
           }
           console.warn("Audio track stalled and data channel not open — forcing reconnect");
@@ -1920,18 +2076,12 @@ function renderBroadcasterList(list) {
 function showPicker() { pickerWrap.style.display = "block"; }
 function hidePicker() { pickerWrap.style.display = "none"; }
 
-const LAST_SESSION_KEYS = {
-  mode: "micStreamLastMode",
-  broadcasterId: "micStreamLastBroadcasterId",
-  broadcasterName: "micStreamLastBroadcasterName",
-};
-
 function chooseBroadcaster(id, name) {
   selectedBroadcasterId = id;
   selectedBroadcasterName = name;
-  localStorage.setItem(LAST_SESSION_KEYS.mode, "listen");
-  localStorage.setItem(LAST_SESSION_KEYS.broadcasterId, id);
-  localStorage.setItem(LAST_SESSION_KEYS.broadcasterName, name);
+  userConf.set("lastMode", "listen");
+  userConf.set("lastBroadcasterId", id);
+  userConf.set("lastBroadcasterName", name);
   hidePicker();
   setStatus(`Connecting to "${name}"...`, "");
   ws.send(JSON.stringify({ type: "listen", broadcasterId: id }));
@@ -1955,10 +2105,6 @@ let lsState = "idle";
 
 function setLsState(state, message) {
   lsState = state;
-  renderLsState(message);
-}
-
-function renderLsState(message) {
   switch (lsState) {
     case "idle":
       connectBtn.disabled = false;
@@ -1985,6 +2131,7 @@ function renderLsState(message) {
       stopConnectionLostAlert();
       setStatus(message || `🔊 Live — receiving audio from "${selectedBroadcasterName}"`, "live");
       if (audioEl.srcObject) setupMeter(audioEl.srcObject);
+      setupMediaSession();
       setMediaPlaybackState("playing");
       showStatusNotification("live");
       if (!statsWatchdogInterval) startStatsWatchdog();
@@ -2002,6 +2149,18 @@ function renderLsState(message) {
   }
 }
 
+// Shared by both signaling modes' listener entry points — priming the alert
+// context (needs a real user gesture), the wake lock, ICE config, and the
+// background notification permission are all identical regardless of mode.
+function lsPrepareConnection() {
+  ensureAlertAudioContext();
+  requestWakeLock();
+  iceServers = buildIceServers();
+  ensureNotificationPermission().then((granted) => {
+    if (granted) showStatusNotification("connecting");
+  });
+}
+
 function connect() {
   const addr = getServerAddress();
   if (!addr) {
@@ -2011,14 +2170,20 @@ function connect() {
   }
   shouldStayConnected = true;
   reconnectAttempt = 0;
-  ensureAlertAudioContext();
-  requestWakeLock();
-  iceServers = buildIceServers();
-  ensureNotificationPermission().then((granted) => {
-    if (granted) showStatusNotification("connecting");
-  });
+  lsPrepareConnection();
   setLsState("connecting");
   openSocket();
+}
+
+// Shared by disconnect() and handleIncomingOffer()'s fresh-connection setup —
+// both need to reset video-on-demand state to its "nothing requested yet" default.
+function resetManualVideoState() {
+  manualLsControlChannel = null;
+  videoRequested = false;
+  showVideoBtn.disabled = true;
+  showVideoBtn.textContent = "📹 Show Video";
+  remoteVideoEl.classList.add("hidden");
+  remoteVideoEl.srcObject = null;
 }
 
 function disconnect() {
@@ -2027,12 +2192,7 @@ function disconnect() {
   if (lsPc) { lsPc.close(); lsPc = null; }
   if (ws) { ws.close(); ws = null; }
   teardownTalkback();
-  manualLsControlChannel = null;
-  videoRequested = false;
-  showVideoBtn.disabled = true;
-  showVideoBtn.textContent = "📹 Show Video";
-  remoteVideoEl.classList.add("hidden");
-  remoteVideoEl.srcObject = null;
+  resetManualVideoState();
   document.getElementById("manualLsFlow").classList.add("hidden");
   document.getElementById("manualLsOfferStep").classList.add("hidden");
   document.getElementById("manualLsAnswerStep").classList.add("hidden");
@@ -2080,10 +2240,7 @@ function openSocket() {
     if (msg.type === "pong") {
       lastPongAt = Date.now();
     } else if (msg.type === "welcome") {
-      if (Array.isArray(msg.iceServers) && msg.iceServers.length) {
-        serverIceServers = msg.iceServers;
-        iceServers = buildIceServers();
-      }
+      applyServerIceServers(msg);
     } else if (msg.type === "error") {
       shouldStayConnected = false;
       clearTimeout(reconnectTimer);
@@ -2118,7 +2275,7 @@ function openSocket() {
         // between: a remembered preference exists and it's the one and only
         // broadcaster currently available. Any ambiguity — multiple options,
         // or the preferred one isn't among them — still shows the picker.
-        const preferredName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+        const preferredName = userConf.get("lastBroadcasterName");
         const isOnlyThePreferred = preferredName && msg.broadcasters.length === 1 && msg.broadcasters[0].name === preferredName;
         if (isOnlyThePreferred) {
           chooseBroadcaster(msg.broadcasters[0].id, msg.broadcasters[0].name);
@@ -2216,12 +2373,16 @@ function startManualListen() {
   document.getElementById("manualLsFlow").classList.remove("hidden");
   document.getElementById("manualLsOfferStep").classList.remove("hidden");
   document.getElementById("manualLsAnswerStep").classList.add("hidden");
-  ensureAlertAudioContext();
-  requestWakeLock();
-  iceServers = buildIceServers();
-  ensureNotificationPermission().then((granted) => {
-    if (granted) showStatusNotification("connecting");
-  });
+  lsPrepareConnection();
+}
+
+// Shared by the reuse branch below and the fresh-relay-mode branch further
+// down — both just answer over the WebSocket, no QR/ICE-gathering wait
+// involved (that's specific to the manual-mode branch, which stays separate).
+async function createAndSendWsAnswer() {
+  const answer = await lsPc.createAnswer();
+  await lsPc.setLocalDescription(answer);
+  ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
 }
 
 async function handleIncomingOffer(offer) {
@@ -2232,9 +2393,7 @@ async function handleIncomingOffer(offer) {
     // mode never reaches this branch: it has no reconnection (see
     // attachLsConnectionHandlers), so every scan/paste always builds fresh.
     await lsPc.setRemoteDescription(offer);
-    const answer = await lsPc.createAnswer();
-    await lsPc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+    await createAndSendWsAnswer();
     return;
   }
 
@@ -2244,12 +2403,7 @@ async function handleIncomingOffer(offer) {
   attachLsConnectionHandlers(lsPc);
 
   if (signalingMethod === "manual") {
-    manualLsControlChannel = null;
-    videoRequested = false;
-    showVideoBtn.disabled = true;
-    showVideoBtn.textContent = "📹 Show Video";
-    remoteVideoEl.classList.add("hidden");
-    remoteVideoEl.srcObject = null;
+    resetManualVideoState();
   } else {
     lsPc.onicecandidate = (e) => {
       if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
@@ -2279,9 +2433,7 @@ async function handleIncomingOffer(offer) {
     }
     connectBtn.disabled = false;
   } else {
-    const answer = await lsPc.createAnswer();
-    await lsPc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+    await createAndSendWsAnswer();
   }
 }
 
@@ -2351,9 +2503,9 @@ if ("serviceWorker" in navigator) {
 // intentional exit — so anything left on load means an unexpected cutoff.
 (function autoResumeSession() {
   if (signalingMethod !== "relay") return; // manual/QR mode can't auto-resume without a fresh QR anyway
-  const lastMode = localStorage.getItem(LAST_SESSION_KEYS.mode);
-  const lastBroadcasterId = localStorage.getItem(LAST_SESSION_KEYS.broadcasterId);
-  const lastBroadcasterName = localStorage.getItem(LAST_SESSION_KEYS.broadcasterName);
+  const lastMode = userConf.get("lastMode");
+  const lastBroadcasterId = userConf.get("lastBroadcasterId");
+  const lastBroadcasterName = userConf.get("lastBroadcasterName");
   if (lastMode !== "listen" || !lastBroadcasterId) return;
   if (!getServerAddress()) return; // nothing to reconnect to without an address
 
@@ -2395,13 +2547,13 @@ function openHelp() {
 
 function getServerAddress() {
   const addr = serverAddrInput.value.trim();
-  if (addr) localStorage.setItem(FIELD_KEYS.addr[1], addr);
+  if (addr) userConf.set("serverAddr", addr);
   return addr;
 }
 
 function getAccessToken() {
   const token = accessTokenInput.value.trim();
-  if (token) localStorage.setItem(FIELD_KEYS.token[1], token);
+  if (token) userConf.set("accessToken", token);
   return token;
 }
 
@@ -2466,7 +2618,7 @@ function changeMode() {
   if (mode === "broadcast") bcStop();
   else if (mode === "listen") disconnect();
   mode = null;
-  localStorage.removeItem(LAST_SESSION_KEYS.mode);
+  userConf.remove("lastMode");
   broadcastSection.style.display = "none";
   listenSection.style.display = "none";
   changeModeBtn.style.display = "none";
@@ -2504,6 +2656,25 @@ function renderQR(elementId, bytes) {
   return new Promise((resolve, reject) => {
     const segments = [{ data: Array.from(bytes), mode: "byte" }];
     QRCode.toDataURL(segments, { errorCorrectionLevel: "L", margin: 1, scale: 6 }, (err, url) => {
+      if (err) { reject(err); return; }
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "QR code";
+      el.appendChild(img);
+      resolve();
+    });
+  });
+}
+
+// General-purpose QR renderer for plain text (URLs, etc.) — distinct from
+// renderQR above, which is specifically for our schema-encoded SDP byte
+// payloads. Letting the library take the raw string directly means it picks
+// the right encoding mode itself, rather than us forcing byte-mode segments.
+function renderTextQR(elementId, text) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = "";
+  return new Promise((resolve, reject) => {
+    QRCode.toDataURL(text, { errorCorrectionLevel: "M", margin: 1, scale: 6 }, (err, url) => {
       if (err) { reject(err); return; }
       const img = document.createElement("img");
       img.src = url;
@@ -2835,7 +3006,7 @@ async function scanQR(videoEl, switchBtn, onResult) {
   }
 
   let deviceIndex = 0;
-  const preferredId = localStorage.getItem("micStreamPreferredCameraId");
+  const preferredId = userConf.get("preferredCameraId");
   if (preferredId && videoDevices.length > 0) {
     const idx = videoDevices.findIndex((d) => d.deviceId === preferredId);
     if (idx !== -1) deviceIndex = idx;
@@ -2850,7 +3021,7 @@ async function scanQR(videoEl, switchBtn, onResult) {
       if (videoDevices.length > 0) {
         const deviceId = videoDevices[deviceIndex % videoDevices.length].deviceId;
         manualScanStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
-        localStorage.setItem("micStreamPreferredCameraId", deviceId);
+        userConf.set("preferredCameraId", deviceId);
       } else {
         manualScanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
       }
