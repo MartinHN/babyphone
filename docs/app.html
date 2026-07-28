@@ -552,6 +552,7 @@ const userConf = {
     preferredCameraId: "micStreamPreferredCameraId",
     preferredMonitorCameraId: "micStreamPreferredMonitorCameraId",
     echoCancellation: "micStreamEchoCancellation",
+    wakeLockEnabled: "micStreamWakeLockEnabled",
   },
   get(name) { return localStorage.getItem(this.KEYS[name]); },
   set(name, value) { localStorage.setItem(this.KEYS[name], value); },
@@ -1516,6 +1517,8 @@ const statusText = document.getElementById("statusText");
 const dot = statusEl.querySelector(".dot");
 const audioEl = document.getElementById("audio");
 const wakeToggle = document.getElementById("wakeToggle");
+const savedWakeLockEnabled = userConf.get("wakeLockEnabled");
+if (savedWakeLockEnabled !== null) wakeToggle.checked = savedWakeLockEnabled === "true";
 const meterCanvas = document.getElementById("meterCanvas");
 const meterCtx = meterCanvas.getContext("2d");
 const meterDbLabel = document.getElementById("meterDb");
@@ -2526,6 +2529,7 @@ connectBtn.addEventListener("click", () => {
   else connect();
 });
 wakeToggle.addEventListener("change", () => {
+  userConf.set("wakeLockEnabled", wakeToggle.checked);
   // Checks both, not just the listener's shouldStayConnected — toggling this
   // back on mid-broadcast previously did nothing at all, since bcStart()'s
   // own session state was never consulted here.
