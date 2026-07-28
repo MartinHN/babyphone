@@ -277,6 +277,16 @@
       <label for="alertToggle">Alert sound if connection is lost</label>
     </div>
     <div class="row" style="justify-content:flex-start;">
+      <input type="checkbox" id="echoCancelToggle" />
+      <label for="echoCancelToggle">Echo cancellation (broadcaster mic)</label>
+    </div>
+    <p class="text-muted" style="text-align:left; margin-top:-4px;">Off by
+    default — this is a room monitor, not a call: echo cancellation is tuned
+    for speech and can suppress or distort exactly the ambient sounds you're
+    listening for, and it costs real CPU to run continuously. Turn it on only
+    if you're hearing genuine feedback/echo (e.g. push-to-talk audio being
+    picked back up by the broadcaster's own mic).</p>
+    <div class="row" style="justify-content:flex-start;">
       <input type="checkbox" id="listenerVoxToggle" />
       <label for="listenerVoxToggle">Voice-activated sending (broadcaster mutes when quiet)</label>
     </div>
@@ -535,6 +545,7 @@ const userConf = {
     lastBroadcasterName: "micStreamLastBroadcasterName",
     preferredCameraId: "micStreamPreferredCameraId",
     preferredMonitorCameraId: "micStreamPreferredMonitorCameraId",
+    echoCancellation: "micStreamEchoCancellation",
   },
   get(name) { return localStorage.getItem(this.KEYS[name]); },
   set(name, value) { localStorage.setItem(this.KEYS[name], value); },
@@ -845,6 +856,8 @@ let voxSource = null;
 let voxRafId = null;
 let voxGateOpen = true;
 let voxLastAboveThresholdAt = 0;
+let voxDataArray = null; // allocated once in startVox, reused every tick instead of per-frame
+let voxLastTickTime = 0;
 
 function voxApplyGate(open) {
   if (open === voxGateOpen) return;
@@ -860,22 +873,30 @@ function voxApplyGate(open) {
 
 function voxTick() {
   if (!voxEnabled || !voxAnalyser) return;
-  const data = new Uint8Array(voxAnalyser.fftSize);
-  voxAnalyser.getByteTimeDomainData(data);
+  voxRafId = requestAnimationFrame(voxTick);
+
+  // The gate has a 1.5s hold time (VOX_HOLD_MS) before it can close, and
+  // opens instantly regardless of tick rate — nothing meaningful is lost by
+  // checking level ~12 times a second instead of 60. That's real, continuous
+  // CPU work (this runs the whole time VOX is enabled) for no perceptible
+  // difference in gating behavior.
+  const now = Date.now();
+  if (now - voxLastTickTime < 80) return;
+  voxLastTickTime = now;
+
+  voxAnalyser.getByteTimeDomainData(voxDataArray);
   let sumSquares = 0;
-  for (let i = 0; i < data.length; i++) {
-    const norm = (data[i] - 128) / 128;
+  for (let i = 0; i < voxDataArray.length; i++) {
+    const norm = (voxDataArray[i] - 128) / 128;
     sumSquares += norm * norm;
   }
-  const rms = Math.sqrt(sumSquares / data.length);
-  const now = Date.now();
+  const rms = Math.sqrt(sumSquares / voxDataArray.length);
   if (rms > voxThresholdRms) {
     voxLastAboveThresholdAt = now;
     if (!voxGateOpen) voxApplyGate(true);
   } else if (voxGateOpen && now - voxLastAboveThresholdAt > VOX_HOLD_MS) {
     voxApplyGate(false);
   }
-  voxRafId = requestAnimationFrame(voxTick);
 }
 
 function startVox(stream) {
@@ -886,6 +907,7 @@ function startVox(stream) {
     voxSource = voxAudioContext.createMediaStreamSource(stream);
     voxAnalyser = voxAudioContext.createAnalyser();
     voxAnalyser.fftSize = 512;
+    voxDataArray = new Uint8Array(voxAnalyser.fftSize);
     voxSource.connect(voxAnalyser);
     voxGateOpen = true; // start open — assume speech until proven quiet, so we don't clip the start of a sound
     voxLastAboveThresholdAt = Date.now();
@@ -979,7 +1001,24 @@ async function bcCaptureMicAndPrepare() {
   deviceNameInput.disabled = true;
   iceServers = buildIceServers();
   try {
-    bcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    // Browsers default echoCancellation/noiseSuppression/autoGainControl to
+    // true if unspecified — all three are speech-call-oriented DSP that runs
+    // continuously and can suppress or distort ambient room sound (crying,
+    // background noise) that a monitor actually wants to hear, for no
+    // benefit when there's no local playback to echo against. Set
+    // explicitly rather than leaving it to that default. Echo cancellation
+    // specifically is user-configurable (echoCancelToggle) since
+    // push-to-talk can occasionally create a real feedback loop worth
+    // trading some CPU/fidelity to fix; noise suppression and gain control
+    // don't have an equivalent legitimate use case here, so they stay off.
+    bcLocalStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: echoCancelToggle.checked,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      video: false,
+    });
   } catch (err) {
     bcSetStatus("Mic access denied: " + err.message, "error");
     bcStartBtn.disabled = false;
@@ -1488,6 +1527,12 @@ if (savedVoxEnabled !== null) listenerVoxToggle.checked = savedVoxEnabled === "t
 const savedVoxThreshold = userConf.get("listenerVoxThreshold");
 if (savedVoxThreshold !== null) voxThresholdSlider.value = savedVoxThreshold;
 
+const echoCancelToggle = document.getElementById("echoCancelToggle");
+echoCancelToggle.checked = userConf.get("echoCancellation") === "true"; // defaults off (unchecked) if never set
+echoCancelToggle.addEventListener("change", () => {
+  userConf.set("echoCancellation", echoCancelToggle.checked);
+});
+
 function sendVoxConfig() {
   const payload = JSON.stringify({
     type: "vox-config",
@@ -1533,7 +1578,13 @@ async function setupTalkback(pc) {
   if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
   talkbackSender = null;
   try {
-    talkbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // No echo cancellation needed here — talkStart() mutes local playback
+    // for the duration of transmission instead, which removes the physical
+    // speaker-to-mic feedback path entirely rather than processing it away.
+    // Free, and more reliable than DSP cancellation.
+    talkbackStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
     talkbackTrack = talkbackStream.getAudioTracks()[0];
     talkbackSender = pc.addTrack(talkbackTrack, talkbackStream);
     await talkbackSender.replaceTrack(null); // start silent — nothing sent until pressed
@@ -1550,6 +1601,7 @@ function teardownTalkback() {
   if (talkbackStream) { talkbackStream.getTracks().forEach((t) => t.stop()); talkbackStream = null; }
   talkbackTrack = null;
   talkbackSender = null;
+  audioEl.muted = false; // in case teardown happens mid-hold, bypassing talkStop()'s own unmute
   pushToTalkBtn.classList.remove("active");
   pushToTalkBtn.classList.add("hidden");
   talkbackStatusEl.textContent = "";
@@ -1558,6 +1610,13 @@ function teardownTalkback() {
 async function talkStart() {
   if (!talkbackSender || !talkbackTrack) return;
   await talkbackSender.replaceTrack(talkbackTrack);
+  // Mute local playback while transmitting, rather than leaning on echo
+  // cancellation to deal with this device's own speaker feeding back into
+  // its mic. Removes the echo path entirely instead of processing it away —
+  // free, and more reliable than DSP cancellation — at the cost of not
+  // hearing the monitor for the few seconds you're holding the button,
+  // which is a reasonable trade for a baby monitor's talk-back feature.
+  audioEl.muted = true;
   pushToTalkBtn.classList.add("active");
   talkbackStatusEl.textContent = "🔴 Talking...";
 }
@@ -1565,6 +1624,7 @@ async function talkStart() {
 async function talkStop() {
   if (!talkbackSender) return;
   await talkbackSender.replaceTrack(null);
+  audioEl.muted = false;
   pushToTalkBtn.classList.remove("active");
   talkbackStatusEl.textContent = "Push-to-talk ready";
 }
