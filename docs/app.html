@@ -176,15 +176,21 @@
      looking at kitsch decorations during passive monitoring; the wiggle/spin
      is GPU-cheap either way, but there's no reason to keep spending even
      that for a screen no one's watching. */
-  body.session-active #niloTitle,
-  body.session-active .nilo-sparkle,
-  body.session-active .nilo-flank,
-  body.session-active .nilo-sticker {
-    animation-play-state: paused;
+  /* Wildcard rather than listing #niloTitle/.nilo-sparkle/.nilo-flank/
+     .nilo-sticker individually — catches every animation inside these two
+     containers, including anything added to them later, rather than
+     depending on remembering to extend this list each time. !important
+     guarantees it wins regardless of the specificity of whatever rule
+     defines the animation in the first place. */
+  body.session-active #niloTitleRow,
+  body.session-active #niloTitleRow *,
+  body.session-active #niloStickerRow,
+  body.session-active #niloStickerRow * {
+    animation: none !important;
   }
   @media (prefers-reduced-motion: reduce) {
-    #niloTitle, .nilo-sparkle, .nilo-flank, .nilo-sticker {
-      animation: none;
+    #niloTitleRow, #niloTitleRow *, #niloStickerRow, #niloStickerRow * {
+      animation: none !important;
     }
   }
 </style>
