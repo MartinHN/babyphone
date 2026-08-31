@@ -29,6 +29,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const selfsigned = require("selfsigned");
+const JSON5 = require('json5')
 
 const TRUST_PROXY = process.env.TRUST_PROXY === "1";
 
@@ -87,7 +88,7 @@ function toUrlArray(value) {
 function loadTurnConfig() {
   if (!fs.existsSync(TURN_CONFIG_PATH)) return {};
   try {
-    return JSON.parse(fs.readFileSync(TURN_CONFIG_PATH, "utf8"));
+    return JSON5.parse(fs.readFileSync(TURN_CONFIG_PATH, "utf8"));
   } catch (err) {
     console.warn(`Could not parse ${TURN_CONFIG_PATH}: ${err.message} — STUN/TURN will not be served.`);
     return {};
@@ -160,7 +161,7 @@ function ensureCert() {
 }
 
 const app = express();
-app.use(express.static(__dirname + "/public"));
+app.use(express.static(__dirname + "/docs"));
 
 let server;
 if (TRUST_PROXY) {
@@ -194,6 +195,7 @@ function pushBroadcasterListToAllListeners() {
 wss.on("connection", (ws, req) => {
   const reqUrl = new URL(req.url, "http://localhost"); // base is irrelevant, just need query parsing
   if (reqUrl.searchParams.get("token") !== ACCESS_TOKEN) {
+    console.log("ws tried invalid token")
     ws.close(4001, "Unauthorized");
     return;
   }
