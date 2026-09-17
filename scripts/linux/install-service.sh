@@ -17,7 +17,7 @@ fi
 
 # The user who ran 'sudo' — NOT root — so the service runs as your normal
 # account rather than root (no reason for this to have root privileges).
-SERVICE_USER="${SUDO_USER:-$(logname 2>/dev/null || echo pi)}"
+SERVICE_USER="${SUDO_USER:-$(logname 2>/dev/null || echo tinmarpi)}"
 
 # Absolute path to this repo (wherever it actually is, not a hardcoded guess).
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,14 +27,19 @@ if [ ! -f "$WORKDIR/server.js" ]; then
   exit 1
 fi
 
-# Full path to node — systemd services get a minimal PATH, so 'ExecStart=node ...'
-# silently fails to start if node was installed via nvm or a non-standard location.
-# Resolving it as the target user (not root) matters if node is nvm-managed,
-# since nvm's shims live under that user's home directory, not root's.
-NODE_BIN="$(sudo -u "$SERVICE_USER" bash -lc 'command -v node' 2>/dev/null || true)"
-if [ -z "$NODE_BIN" ]; then
-  echo "Could not find 'node' in ${SERVICE_USER}'s PATH. Install Node.js first, or" >&2
-  echo "edit the generated unit file's ExecStart= line with the correct path." >&2
+# Full path to the bun binary — systemd services get a minimal PATH, so a bare
+# 'ExecStart=bun ...' silently fails to start. Resolve it as the target user
+# (not root) since bun installs under ~/.bun/bin in that user's home directory.
+RUN_BIN="$(sudo -u "$SERVICE_USER" bash -lc 'command -v bun' 2>/dev/null || true)"
+if [ -z "$RUN_BIN" ]; then
+  # Fall back to bun's default install location, but only if it really exists.
+  CANDIDATE="$(sudo -u "$SERVICE_USER" bash -lc 'echo "$HOME/.bun/bin/bun"')"
+  [ -x "$CANDIDATE" ] && RUN_BIN="$CANDIDATE"
+fi
+if [ -z "$RUN_BIN" ]; then
+  echo "Could not find 'bun' in ${SERVICE_USER}'s PATH or ~/.bun/bin." >&2
+  echo "Install it first (curl -fsSL https://bun.sh/install | bash), or edit" >&2
+  echo "the generated unit file's ExecStart= line with the correct path." >&2
   exit 1
 fi
 
@@ -43,7 +48,7 @@ UNIT_PATH="/etc/systemd/system/mic-stream.service"
 echo "Installing service:"
 echo "  User:        $SERVICE_USER"
 echo "  Working dir: $WORKDIR"
-echo "  Node:        $NODE_BIN"
+echo "  Bun:         $RUN_BIN"
 echo
 
 cat > "$UNIT_PATH" <<EOF
@@ -56,14 +61,14 @@ Wants=network-online.target
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$WORKDIR
-ExecStart=$NODE_BIN $WORKDIR/server.js
+ExecStart=$RUN_BIN $WORKDIR/server.js
 Restart=always
 RestartSec=3
 
 # Uncomment and edit any of these as needed, then run:
 #   sudo systemctl daemon-reload && sudo systemctl restart mic-stream
 #
-# Environment=PORT=3000
+Environment=PORT=3001
 # Environment=ACCESS_TOKEN=pin-a-fixed-token-here-instead-of-the-generated-one
 # Environment=TRUST_PROXY=1
 
@@ -77,8 +82,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable mic-stream
-systemctl restart mic-stream
+# systemctl enable mic-stream
+# systemctl restart mic-stream
 
 echo
 echo "Done. Service is enabled (starts on boot) and running now."
